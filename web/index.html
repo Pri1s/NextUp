@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>NextUp – Frame Pipeline</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>NextUp frame pipeline</h1>
+    <div class="counts" id="totals">loading…</div>
+  </header>
+  <main>
+    <div class="clip-list" id="clips"></div>
+    <p class="hint">
+      Add clips to <code>input_videos/</code> and run
+      <code>python extract_frames.py</code> (with the server stopped) to add
+      more candidates.
+    </p>
+  </main>
+  <script>
+    function countsHtml(c) {
+      return `<b>${c.clips}</b> clips · <b>${c.candidates}</b> candidates · ` +
+             `<b>${c.pending}</b> pending · <b class="keep">${c.keep}</b> keep · ` +
+             `<b class="skip">${c.skip}</b> skip · <b class="labeled">${c.labeled}</b> labeled`;
+    }
+    async function load() {
+      const data = await (await fetch('/api/clips')).json();
+      document.getElementById('totals').innerHTML = countsHtml(data.counts);
+      const list = document.getElementById('clips');
+      list.innerHTML = '';
+      for (const clip of data.clips) {
+        const c = clip.counts;
+        const card = document.createElement('div');
+        card.className = 'clip-card';
+        card.innerHTML =
+          `<span class="name">${clip.clip_id}</span>` +
+          `<span class="meta">${clip.width}×${clip.height} · ${clip.fps.toFixed(0)} fps · ` +
+          `${c.candidates} candidates · ${c.pending} pending · ` +
+          `<span class="keep">${c.keep} keep</span> · ${c.labeled} labeled</span>` +
+          `<span class="actions">` +
+          `<a class="btn" href="/triage/${clip.clip_id}">Triage</a>` +
+          `<a class="btn" href="/label/${clip.clip_id}">Label</a></span>`;
+        list.appendChild(card);
+      }
+      if (!data.clips.length) {
+        list.innerHTML = '<p class="hint">No clips extracted yet.</p>';
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+{
+  "clips": {
+    "video_4": {
+      "extracted_at": "2026-07-18T15:23:34",
+      "file_mtime": 1784400618.7451787,
+      "file_size": 5483376,
+      "filename": "video_4.mp4",
+      "fps": 60.0,
+      "frame_count": 436,
+      "height": 1382,
+      "interval_s": 1.0,
+      "path": "/Users/pri/Projects/Git/game-analyzers/NextUp/input_videos/video_4.mp4",
+      "width": 2478
+    }
+  },
+  "frames": {
+    "video_4_f000000": {
+      "clip_id": "video_4",
+      "frame_index": 0,
+      "image": "frames/video_4/video_4_f000000.jpg",
+      "label_status": "unlabeled",
+      "thumb": "thumbs/video_4/video_4_f000000.jpg",
+      "timestamp_s": 0.0,
+      "triage": "pending"
+    },
+    "video_4_f000060": {
+      "clip_id": "video_4",
+      "frame_index": 60,
+      "image": "frames/video_4/video_4_f000060.jpg",
+      "label_status": "unlabeled",
+      "thumb": "thumbs/video_4/video_4_f000060.jpg",
+      "timestamp_s": 1.0,
+      "triage": "pending"
+    },
+    "video_4_f000120": {
+      "clip_id": "video_4",
+      "frame_index": 120,
+      "image": "frames/video_4/video_4_f000120.jpg",
+      "label_status": "unlabeled",
+      "thumb": "thumbs/video_4/video_4_f000120.jpg",
+      "timestamp_s": 2.0,
+      "triage": "pending"
+    },
+    "video_4_f000180": {
+      "clip_id": "video_4",
+      "frame_index": 180,
+      "image": "frames/video_4/video_4_f000180.jpg",
+      "label_status": "unlabeled",
+      "thumb": "thumbs/video_4/video_4_f000180.jpg",
+      "timestamp_s": 3.0,
+      "triage": "pending"
+    },
+    "video_4_f000240": {
+      "clip_id": "video_4",
+      "frame_index": 240,
+      "image": "frames/video_4/video_4_f000240.jpg",
+      "label_status": "unlabeled",
+      "thumb": "thumbs/video_4/video_4_f000240.jpg",
+      "timestamp_s": 4.0,
+      "triage": "pending"
+    },
+    "video_4_f000300": {
+      "clip_id": "video_4",
+      "frame_index": 300,
+      "image": "frames/video_4/video_4_f000300.jpg",
+      "label_status": "unlabeled",
+      "thumb": "thumbs/video_4/video_4_f000300.jpg",
+      "timestamp_s": 5.0,
+      "triage": "pending"
+    },
+    "video_4_f000360": {
+      "clip_id": "video_4",
+      "frame_index": 360,
+      "image": "frames/video_4/video_4_f000360.jpg",
+      "label_status": "unlabeled",
+      "thumb": "thumbs/video_4/video_4_f000360.jpg",
+      "timestamp_s": 6.0,
+      "triage": "pending"
+    },
+    "video_4_f000420": {
+      "clip_id": "video_4",
+      "frame_index": 420,
+      "image": "frames/video_4/video_4_f000420.jpg",
+      "label_status": "unlabeled",
+      "thumb": "thumbs/video_4/video_4_f000420.jpg",
+      "timestamp_s": 7.0,
+      "triage": "pending"
+    }
+  },
+  "version": 1
+}
