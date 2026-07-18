@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Label – NextUp</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1><a href="/">←</a> Label: <span id="clip-name"></span></h1>
+    <div class="counts" id="progress"></div>
+    <div class="counts" id="status"></div>
+  </header>
+  <div class="label-layout">
+    <div id="canvas-wrap"><canvas id="canvas"></canvas></div>
+    <aside class="side">
+      <button class="btn primary" id="save">Save (⌘S)</button>
+      <button class="btn" id="repredict">Re-predict (R)</button>
+      <div style="margin-top:10px">
+        <button class="btn" id="prev">← Prev</button>
+        <button class="btn" id="next">Next →</button>
+      </div>
+      <h2 style="margin-top:14px">Keypoints</h2>
+      <ul id="point-list"></ul>
+      <div class="keys">
+        Drag a point to move it.<br>
+        Click point / list to select.<br>
+        <kbd>V</kbd> or right-click: cycle visibility 2→1→0<br>
+        <kbd>←</kbd><kbd>→</kbd> prev / next frame (autosaves)<br>
+        Wheel: zoom · <kbd>space</kbd>+drag: pan<br>
+        v2 visible · v1 occluded · v0 excluded
+      </div>
+    </aside>
+  </div>
+  <script src="/static/label.js"></script>
+</body>
+</html>

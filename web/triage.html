@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Triage – NextUp</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1><a href="/">←</a> Triage: <span id="clip-name"></span></h1>
+    <div class="filters" id="filters">
+      <button data-filter="all" class="active">all</button>
+      <button data-filter="pending">pending</button>
+      <button data-filter="keep">keep</button>
+      <button data-filter="skip">skip</button>
+    </div>
+    <div class="counts" id="counts"></div>
+  </header>
+  <main>
+    <div class="grid" id="grid"></div>
+    <p class="hint">
+      Click a frame to cycle pending → keep → skip. Keyboard: arrows move,
+      <kbd>K</kbd> keep, <kbd>S</kbd> skip, <kbd>U</kbd> reset to pending.
+    </p>
+  </main>
+  <script src="/static/triage.js"></script>
+</body>
+</html>
