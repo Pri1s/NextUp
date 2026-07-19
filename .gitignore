@@ -5,5 +5,7 @@ __pycache__/
 output_videos/
 dataset/frames/
 dataset/thumbs/
+dataset/labels/
+dataset/manifest.json
 export/
 .DS_Store

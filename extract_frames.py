@@ -4,10 +4,9 @@ Samples one random frame from every --interval seconds of footage in each
 video found in the input directory, writing a full-resolution JPEG plus a
 small thumbnail per sampled frame and recording provenance (clip, frame index,
 timestamp) in the shared manifest. Sampling is length-agnostic (the window
-size is derived from each clip's own fps) and deterministic per clip, so
-re-running is safe: clips already extracted with the same interval are
-skipped, re-extraction picks the same frames, and existing triage/label
-decisions are never touched.
+size is derived from each clip's own fps) and deterministic per clip. Normal
+re-runs skip clips already extracted at the same interval. The explicit
+--reset mode clears all derived pipeline state, then extracts every clip anew.
 """
 
 from __future__ import annotations
@@ -15,6 +14,7 @@ from __future__ import annotations
 import argparse
 import random
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -52,8 +52,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--interval",
         type=float,
-        default=1.0,
-        help="Seconds between sampled frames (default: 1.0)",
+        default=2.0,
+        help="Seconds between sampled frames (default: 2.0)",
     )
     parser.add_argument(
         "--thumb-width",
@@ -64,7 +64,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Re-extract clips even if already in the manifest",
+        help="Re-extract clips even if already in the manifest, preserving existing progress",
+    )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Clear all derived dataset/export state, then extract every input clip from scratch",
     )
     parser.add_argument(
         "--clip",
@@ -72,6 +77,18 @@ def parse_args() -> argparse.Namespace:
         help="Only process the clip with this id (filename stem)",
     )
     return parser.parse_args()
+
+
+def reset_derived_state(dataset_dir: Path) -> None:
+    """Remove generated pipeline artifacts without touching videos or schemas."""
+    dataset_dir = Path(dataset_dir)
+    for directory in ("frames", "thumbs", "labels"):
+        shutil.rmtree(dataset_dir / directory, ignore_errors=True)
+    try:
+        (dataset_dir / "manifest.json").unlink()
+    except FileNotFoundError:
+        pass
+    shutil.rmtree(PROJECT_DIR / "export", ignore_errors=True)
 
 
 def clip_id_for(video_path: Path) -> str:
@@ -180,6 +197,8 @@ def extract_clip(
 
 def main() -> None:
     args = parse_args()
+    if args.reset and (args.force or args.clip is not None):
+        raise SystemExit("--reset cannot be combined with --force or --clip; it always extracts all clips")
     if not args.videos.is_dir():
         raise SystemExit(f"Input video directory not found: {args.videos}")
 
@@ -192,6 +211,10 @@ def main() -> None:
         videos = [path for path in videos if clip_id_for(path) == args.clip]
         if not videos:
             raise SystemExit(f"No video in {args.videos} matches clip id: {args.clip}")
+
+    if args.reset:
+        reset_derived_state(args.dataset)
+        print("Reset derived dataset and export state; extracting all input clips from scratch.")
 
     manifest = load_manifest(args.dataset)
     new_clips = 0

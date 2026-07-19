@@ -8,8 +8,13 @@
 </head>
 <body>
   <header>
-    <h1><a href="/">←</a> Triage: <span id="clip-name"></span></h1>
-    <div class="filters" id="filters">
+    <a class="back-link" href="/" aria-label="Back to clips">←</a>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">NU</span>
+      <h1>Frame triage <span>/ <span id="clip-name"></span></span></h1>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="filters" id="filters" aria-label="Frame filter">
       <button data-filter="all" class="active">all</button>
       <button data-filter="pending">pending</button>
       <button data-filter="keep">keep</button>

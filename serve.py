@@ -31,6 +31,95 @@ from pipeline_manifest import (
 
 DEFAULT_MODEL = PROJECT_DIR / "models" / "court_keypoint_detector.pt"
 WEB_DIR = PROJECT_DIR / "web"
+KEYPOINT_SCHEMA_PATH = PROJECT_DIR / "dataset" / "schemas" / "court_keypoints.v2.json"
+ORIENTATION_MIN_POINTS_PER_END = 2
+ORIENTATION_MIN_X_SEPARATION_FRACTION = 0.03
+NORTH_CONVENTION = "image_left_basket"
+
+
+def load_keypoint_schema() -> dict:
+    if not KEYPOINT_SCHEMA_PATH.is_file():
+        raise FileNotFoundError(f"Keypoint schema not found: {KEYPOINT_SCHEMA_PATH}")
+    with open(KEYPOINT_SCHEMA_PATH, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def schema_provenance() -> dict:
+    schema = load_keypoint_schema()
+    return {
+        "schema_name": schema["schema_name"],
+        "schema_version": schema["schema_version"],
+    }
+
+
+def clip_orientation(clip: dict) -> dict | None:
+    """Return only orientation metadata compatible with the current anchor axis."""
+    orientation = clip.get("orientation")
+    if not isinstance(orientation, dict):
+        return None
+    # Image-top anchors belonged to the superseded schema and must be re-anchored.
+    return orientation if orientation.get("north_convention") == NORTH_CONVENTION else None
+
+
+def normalize_keypoints(points: list[dict], permutation_name: str) -> list[dict]:
+    """Return raw prediction points in the fixed canonical index order."""
+    schema = load_keypoint_schema()
+    permutation = schema["normalization"].get(permutation_name)
+    expected = len(schema["keypoints"])
+    if not isinstance(permutation, list) or len(permutation) != expected:
+        raise ValueError(f"Unknown or invalid normalization: {permutation_name}")
+    if len(points) != expected:
+        raise ValueError(
+            f"Model returned {len(points)} keypoints; canonical schema requires {expected}"
+        )
+    return [dict(points[raw_index]) for raw_index in permutation]
+
+
+def infer_orientation(points: list[dict], image_width: int) -> tuple[str | None, dict]:
+    """Infer the raw model end relation from the anchor image's X positions."""
+    schema = load_keypoint_schema()
+    groups = schema["normalization"]["raw_end_groups"]
+
+    def mean_x(indices: list[int]) -> tuple[float | None, int]:
+        located = [
+            points[index]["x"]
+            for index in indices
+            if index < len(points)
+            and points[index].get("v", 0) > 0
+            and not (points[index].get("x") == 0 and points[index].get("y") == 0)
+        ]
+        return (sum(located) / len(located), len(located)) if located else (None, 0)
+
+    first_x, first_count = mean_x(groups["first"])
+    second_x, second_count = mean_x(groups["second"])
+    evidence = {
+        "first_end_mean_x": round(first_x, 2) if first_x is not None else None,
+        "first_end_points": first_count,
+        "second_end_mean_x": round(second_x, 2) if second_x is not None else None,
+        "second_end_points": second_count,
+    }
+    if first_count < ORIENTATION_MIN_POINTS_PER_END or second_count < ORIENTATION_MIN_POINTS_PER_END:
+        evidence["reason"] = "both raw end groups need at least two located points"
+        return None, evidence
+    if abs(first_x - second_x) < max(12.0, image_width * ORIENTATION_MIN_X_SEPARATION_FRACTION):
+        evidence["reason"] = "raw end-group mean X positions are too close to anchor reliably"
+        return None, evidence
+    # Footage uses a left/right court axis: north is the image-left basket.
+    if first_x < second_x:
+        return "identity", evidence
+    return "rotate_180", evidence
+
+
+def orientation_for_response(orientation: dict | None) -> dict | None:
+    if orientation is None:
+        return None
+    return {
+        "anchor_frame_id": orientation["anchor_frame_id"],
+        "north_convention": orientation["north_convention"],
+        "raw_first_end_relation": orientation["raw_first_end_relation"],
+        "prefill_normalization": orientation["prefill_normalization"],
+        "method": orientation["method"],
+    }
 
 app = Flask(__name__, static_folder=str(WEB_DIR / "static"))
 
@@ -145,6 +234,89 @@ def api_clips():
     return jsonify({"clips": clips, "counts": counts(manifest)})
 
 
+@app.get("/api/keypoint-schema")
+def api_keypoint_schema():
+    """Return the versioned feature semantics used by the labeling UI."""
+    try:
+        return jsonify(load_keypoint_schema())
+    except FileNotFoundError as error:
+        abort(500, str(error))
+
+
+@app.get("/api/clip/<clip_id>/orientation")
+def api_get_orientation(clip_id: str):
+    clip = state["manifest"]["clips"].get(clip_id)
+    if clip is None:
+        abort(404, f"Unknown clip: {clip_id}")
+    return jsonify({"clip_id": clip_id, "orientation": orientation_for_response(clip_orientation(clip))})
+
+
+@app.post("/api/clip/<clip_id>/orientation")
+def api_set_orientation(clip_id: str):
+    """Lock the one-time canonical orientation before exposing clip prefill."""
+    body = request.get_json(force=True)
+    frame_id = body.get("frame_id")
+    relation = body.get("raw_first_end_relation", "auto")
+    if relation not in {"auto", "left", "right"}:
+        abort(400, "raw_first_end_relation must be auto, left, or right")
+
+    with state_lock:
+        clip = state["manifest"]["clips"].get(clip_id)
+        frame = state["manifest"]["frames"].get(frame_id)
+        if clip is None:
+            abort(404, f"Unknown clip: {clip_id}")
+        if frame is None or frame.get("clip_id") != clip_id:
+            abort(400, "anchor frame must belong to this clip")
+        existing = clip_orientation(clip)
+        if existing is not None:
+            return jsonify({
+                "clip_id": clip_id,
+                "orientation": orientation_for_response(existing),
+                "already_locked": True,
+            })
+
+    if relation == "auto":
+        raw_points = predict_keypoints(state["dataset_dir"] / frame["image"])
+        normalization, evidence = infer_orientation(raw_points, clip["width"])
+        if normalization is None:
+            return jsonify({
+                "error": "Could not infer a reliable orientation from this anchor frame.",
+                "evidence": evidence,
+                "requires_manual_relation": True,
+            }), 422
+        raw_first_end_relation = "left" if normalization == "identity" else "right"
+        method = "raw_end_group_mean_x"
+    else:
+        normalization = "identity" if relation == "left" else "rotate_180"
+        raw_first_end_relation = relation
+        evidence = {"reason": "operator-selected raw first-end relation"}
+        method = "operator_selected"
+
+    orientation = {
+        "anchor_frame_id": frame_id,
+        "north_convention": NORTH_CONVENTION,
+        "raw_first_end_relation": raw_first_end_relation,
+        "prefill_normalization": normalization,
+        "method": method,
+        "evidence": evidence,
+        "locked_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    with state_lock:
+        # Another request may have locked it while model inference was running.
+        clip = state["manifest"]["clips"][clip_id]
+        existing = clip_orientation(clip)
+        if existing is None:
+            clip["orientation"] = orientation
+            save_manifest(state["dataset_dir"], state["manifest"])
+        else:
+            orientation = existing
+    return jsonify({
+        "clip_id": clip_id,
+        "orientation": orientation_for_response(orientation),
+        "already_locked": existing is not None,
+    })
+
+
 @app.get("/api/frames")
 def api_frames():
     manifest = state["manifest"]
@@ -199,16 +371,33 @@ def api_get_label(frame_id: str):
     frame = state["manifest"]["frames"].get(frame_id)
     if frame is None:
         abort(404, f"Unknown frame: {frame_id}")
+    clip = state["manifest"]["clips"][frame["clip_id"]]
+    orientation = clip_orientation(clip)
+    if orientation is None:
+        return jsonify({
+            "error": "Set the clip orientation anchor before requesting prefill.",
+            "orientation_required": True,
+            "schema": schema_provenance(),
+        }), 409
+
     path = label_path(frame_id)
     force_predict = request.args.get("predict") == "1"
     if path.is_file() and not force_predict:
         with open(path, "r", encoding="utf-8") as handle:
             label = json.load(handle)
-        return jsonify({"source": "saved", "label": label,
-                        "num_keypoints": len(label.get("keypoints", []))})
+        return jsonify({
+            "source": "saved",
+            "label": label,
+            "num_keypoints": len(label.get("keypoints", [])),
+            "orientation": orientation_for_response(orientation),
+            "schema": schema_provenance(),
+        })
 
-    clip = state["manifest"]["clips"][frame["clip_id"]]
-    points = predict_keypoints(state["dataset_dir"] / frame["image"])
+    raw_points = predict_keypoints(state["dataset_dir"] / frame["image"])
+    try:
+        points = normalize_keypoints(raw_points, orientation["prefill_normalization"])
+    except ValueError as error:
+        abort(500, str(error))
     label = {
         "frame_id": frame_id,
         "image_w": clip["width"],
@@ -216,26 +405,37 @@ def api_get_label(frame_id: str):
         "num_keypoints": len(points),
         "keypoints": points,
     }
-    return jsonify({"source": "predicted", "label": label,
-                    "num_keypoints": len(points)})
+    return jsonify({
+        "source": "predicted",
+        "label": label,
+        "num_keypoints": len(points),
+        "orientation": orientation_for_response(orientation),
+        "schema": schema_provenance(),
+    })
 
 
 @app.post("/api/label/<frame_id>")
 def api_save_label(frame_id: str):
     body = request.get_json(force=True)
     keypoints = body.get("keypoints")
-    if not isinstance(keypoints, list) or not keypoints:
-        abort(400, "keypoints must be a non-empty list")
+    expected = len(load_keypoint_schema()["keypoints"])
+    if not isinstance(keypoints, list) or len(keypoints) != expected:
+        abort(400, f"keypoints must contain exactly {expected} canonical points")
     with state_lock:
         frame = state["manifest"]["frames"].get(frame_id)
         if frame is None:
             abort(404, f"Unknown frame: {frame_id}")
         clip = state["manifest"]["clips"][frame["clip_id"]]
+        orientation = clip_orientation(clip)
+        if orientation is None:
+            abort(409, "Set the clip orientation anchor before saving a label")
         label = {
             "frame_id": frame_id,
             "image_w": clip["width"],
             "image_h": clip["height"],
-            "num_keypoints": len(keypoints),
+            "num_keypoints": expected,
+            "schema": schema_provenance(),
+            "orientation": orientation_for_response(orientation),
             "keypoints": [
                 {
                     "x": float(point["x"]),
@@ -255,7 +455,13 @@ def api_save_label(frame_id: str):
         frame["label_status"] = "labeled"
         save_manifest(state["dataset_dir"], state["manifest"])
         total_counts = counts(state["manifest"])
-    return jsonify({"frame_id": frame_id, "saved": True, "counts": total_counts})
+    return jsonify({
+        "frame_id": frame_id,
+        "saved": True,
+        "counts": total_counts,
+        "schema": label["schema"],
+        "orientation": label["orientation"],
+    })
 
 
 @app.get("/images/<path:relpath>")

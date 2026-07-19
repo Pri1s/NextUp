@@ -1,0 +1,23 @@
+{
+  "schema_name": "basketball-court-keypoints",
+  "schema_version": "2.1.0",
+  "audit_date": "2026-07-19",
+  "purpose": "Record the fixed court-coordinate interpretation used for all new labels and exports.",
+  "landmark_inventory": {
+    "north_baseline": 6,
+    "south_baseline": 6,
+    "midcourt_sideline": 2,
+    "north_free_throw": 2,
+    "south_free_throw": 2,
+    "total": 18
+  },
+  "confirmed_geometry": [
+    "K1/K6 and K11/K16 are the four real baseline/sideline court corners; no basket-center landmark is present.",
+    "Each baseline orders its six trained features from one outer corner through three-point and lane junctions to the other outer corner.",
+    "K7 and K8 are the two midcourt-line/sideline intersections; no center-circle landmark is present.",
+    "K9/K10 and K17/K18 are the lane/free-throw-line corners."
+  ],
+  "normalization_pairs": [[1, 11], [2, 12], [3, 13], [4, 14], [5, 15], [6, 16], [7, 8], [9, 18], [10, 17]],
+  "orientation_rule": "Review of representative frames from clips 001–004 found the basket-to-basket court axis is left-to-right in footage. North remains top in the canonical diagram, but is the image-left basket on a clip's locked anchor frame. Fresh raw model output is normalized once per clip with either the identity or 180-degree permutation in court_keypoints.v2.json. Saved labels are already canonical and are never normalized again.",
+  "evidence": "The v2.1 map restores the trained raw-landmark order: six real baseline features at each end, two real sideline/midcourt intersections, and two lane/free-throw corners at each end. The 180-degree permutation is the direct counterpart swap for every listed normalization pair. Labels from schema 2.0.0 are incompatible and must be relabeled."
+}
