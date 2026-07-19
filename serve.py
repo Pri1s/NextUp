@@ -182,6 +182,18 @@ def api_triage():
                     "clip_counts": clip_counts, "counts": total_counts})
 
 
+@app.post("/api/clip/<clip_id>/done")
+def api_clip_done(clip_id: str):
+    body = request.get_json(force=True)
+    with state_lock:
+        clip = state["manifest"]["clips"].get(clip_id)
+        if clip is None:
+            abort(404, f"Unknown clip: {clip_id}")
+        clip["done"] = bool(body.get("done"))
+        save_manifest(state["dataset_dir"], state["manifest"])
+    return jsonify({"clip_id": clip_id, "done": clip["done"]})
+
+
 @app.get("/api/label/<frame_id>")
 def api_get_label(frame_id: str):
     frame = state["manifest"]["frames"].get(frame_id)

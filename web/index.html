@@ -33,17 +33,31 @@
       for (const clip of data.clips) {
         const c = clip.counts;
         const card = document.createElement('div');
-        card.className = 'clip-card';
+        card.className = 'clip-card' + (clip.done ? ' done' : '');
         card.innerHTML =
-          `<span class="name">${clip.clip_id}</span>` +
+          `<span class="name">${clip.clip_id}` +
+          (clip.done ? ' <span class="done-badge">✓ done</span>' : '') + `</span>` +
           `<span class="meta">${clip.width}×${clip.height} · ${clip.fps.toFixed(0)} fps · ` +
           `${c.candidates} candidates · ${c.pending} pending · ` +
           `<span class="keep">${c.keep} keep</span> · ${c.labeled} labeled</span>` +
           `<span class="actions">` +
           `<a class="btn" href="/triage/${clip.clip_id}">Triage</a>` +
-          `<a class="btn" href="/label/${clip.clip_id}">Label</a></span>`;
+          `<a class="btn" href="/label/${clip.clip_id}">Label</a>` +
+          `<button class="btn" data-done="${clip.clip_id}">` +
+          (clip.done ? 'Reopen' : 'Mark done') + `</button></span>`;
         list.appendChild(card);
       }
+      list.querySelectorAll('button[data-done]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const clip = data.clips.find(c => c.clip_id === button.dataset.done);
+          await fetch(`/api/clip/${clip.clip_id}/done`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ done: !clip.done }),
+          });
+          load();
+        });
+      });
       if (!data.clips.length) {
         list.innerHTML = '<p class="hint">No clips extracted yet.</p>';
       }

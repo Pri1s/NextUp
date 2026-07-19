@@ -57,10 +57,12 @@ candidates, keep/skip, labeled) when it finishes.
 **1. Extract candidate frames.** Drop clips into `input_videos/` and run:
 
 ```bash
-python3 extract_frames.py            # ~1 frame per second per clip
+python3 extract_frames.py            # one random frame per second of footage
 ```
 
-Already-extracted clips are skipped, so re-run it whenever you add footage.
+Sampling adapts to each clip's own length and frame rate, and is seeded per
+clip so re-extraction always picks the same frames. Already-extracted clips
+are skipped, so re-run it whenever you add footage.
 Use `--interval` to change the sampling rate, `--force --clip ID` to redo one
 clip (triage/label decisions are preserved).
 
@@ -77,6 +79,13 @@ python3 serve.py                     # then open http://127.0.0.1:8000
   them, `V`/right-click cycles visibility (2 visible / 1 occluded / 0 excluded),
   `←`/`→` moves between frames and autosaves. Labels are written to
   `dataset/labels/<clip>/<frame>.json`.
+- *Labeling from scratch*: on frames where the model finds no court (for
+  example a camera angle it was never trained on), all keypoints start
+  "unplaced" and hidden. The sidebar lists every keypoint with a short
+  description of the court feature it marks; click an unplaced one to spawn it
+  on the canvas, move the mouse to position it, and click to drop it
+  (`Esc` cancels). Never-placed points are saved as `(0, 0)` with
+  visibility 0, which `export_yolo.py` already treats as absent.
 
 Don't run `extract_frames.py` while the server is up — both write the manifest.
 
