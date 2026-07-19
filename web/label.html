@@ -8,35 +8,68 @@
 </head>
 <body>
   <header>
-    <h1><a href="/">←</a> Label: <span id="clip-name"></span></h1>
+    <a class="back-link" href="/" aria-label="Back to clips">←</a>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">NU</span>
+      <h1>Frame labeler <span>/ <span id="clip-name"></span></span></h1>
+    </div>
+    <div class="header-spacer"></div>
     <div class="counts" id="progress"></div>
-    <div class="counts" id="status"></div>
+    <div class="counts" id="status" aria-live="polite"></div>
   </header>
+
   <div class="label-layout">
     <div id="canvas-wrap"><canvas id="canvas"></canvas></div>
-    <aside class="side">
-      <button class="btn primary" id="save">Save (⌘S)</button>
-      <button class="btn" id="repredict">Re-predict (R)</button>
-      <div style="margin-top:10px">
-        <button class="btn" id="prev">← Prev</button>
-        <button class="btn" id="next">Next →</button>
-      </div>
-      <h2 style="margin-top:14px">Keypoints</h2>
-      <ul id="point-list"></ul>
-      <div class="keys">
-        Drag a point to move it.<br>
-        Click point / list to select.<br>
-        Unplaced points (no model prediction) are hidden:
-        click one in the list to spawn it, move the mouse,
-        click on the image to drop it. <kbd>Esc</kbd> cancels.<br>
-        <kbd>V</kbd> or right-click: cycle visibility 2→1→0<br>
-        <kbd>←</kbd><kbd>→</kbd> prev / next frame (autosaves)<br>
-        Wheel: zoom · <kbd>space</kbd>+drag: pan<br>
-        v2 visible · v1 occluded · v0 excluded<br>
-        End A/B and far/near in the descriptions: pick one
-        basket end as A and the sideline farthest from the
-        camera as "far", and keep them consistent within a clip.
-      </div>
+    <aside class="side" aria-label="Labeling controls">
+      <section class="sidebar-section court-reference" aria-labelledby="court-reference-title">
+        <div class="side-heading">
+          <h2 id="court-reference-title">Court map</h2>
+          <span>canonical</span>
+        </div>
+        <object id="court-reference" type="image/svg+xml"
+          data="/static/court-keypoints-reference.svg"
+          aria-label="Numbered canonical basketball court, north at top and east at right"></object>
+        <p>North is top · east is right</p>
+      </section>
+
+      <section id="orientation-panel" class="sidebar-section orientation-panel" hidden aria-live="polite">
+        <h2>Set clip orientation</h2>
+        <p>Anchor this clip before prefill: north is the basket on this frame’s image-left side. This setting is locked for the clip.</p>
+        <button class="btn primary" id="anchor-auto">Use this frame as anchor</button>
+        <div id="orientation-fallback" hidden>
+          <p id="orientation-evidence"></p>
+          <p>Choose the raw K1–K10 end’s screen position for this clip:</p>
+          <button class="btn" id="anchor-first-left">It is left</button>
+          <button class="btn" id="anchor-first-right">It is right</button>
+        </div>
+      </section>
+
+      <section class="sidebar-section">
+        <div id="orientation-status" class="orientation-status"></div>
+        <div class="toolbar" aria-label="Frame actions">
+          <button class="btn primary" id="save">Save <kbd>⌘S</kbd></button>
+          <button class="btn" id="repredict">Re-predict <kbd>R</kbd></button>
+          <button class="btn danger" id="remove-point" disabled>Remove selected <kbd>⌫</kbd></button>
+          <button class="btn" id="prev">← Previous</button>
+          <button class="btn" id="next">Next →</button>
+        </div>
+      </section>
+
+      <section class="sidebar-section" aria-labelledby="keypoints-title">
+        <div class="side-heading">
+          <h2 id="keypoints-title">Keypoints</h2>
+          <span>K1–K18</span>
+        </div>
+        <ul id="point-list"></ul>
+      </section>
+
+      <section class="keys" aria-label="Keyboard and interaction help">
+        Drag to move · click a list item to select.<br>
+        Removed or unplaced points can be restored by selecting them in the list, then clicking the frame. <kbd>Esc</kbd> cancels placement.<br>
+        <kbd>V</kbd> or right-click cycles visible / occluded / excluded.<br>
+        <kbd>←</kbd><kbd>→</kbd> changes frame and autosaves · wheel zooms · <kbd>Space</kbd>+drag pans.<br>
+        Labels follow <code>court_keypoints.v2.json</code>; the locked orientation normalizes prefill to the map above.
+      </section>
     </aside>
   </div>
   <script src="/static/label.js"></script>

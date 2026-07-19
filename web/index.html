@@ -8,7 +8,11 @@
 </head>
 <body>
   <header>
-    <h1>NextUp frame pipeline</h1>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">NU</span>
+      <h1>NextUp <span>frame pipeline</span></h1>
+    </div>
+    <div class="header-spacer"></div>
     <div class="counts" id="totals">loading…</div>
   </header>
   <main>
@@ -58,9 +62,7 @@
           load();
         });
       });
-      if (!data.clips.length) {
-        list.innerHTML = '<p class="hint">No clips extracted yet.</p>';
-      }
+      if (!data.clips.length) list.innerHTML = '<p class="hint">No clips extracted yet.</p>';
     }
     load();
   </script>

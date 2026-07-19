@@ -5,32 +5,11 @@ const pathParts = location.pathname.split('/').filter(Boolean);
 const clipId = pathParts.length > 1 ? decodeURIComponent(pathParts[1]) : null;
 document.getElementById('clip-name').textContent = clipId || 'all kept frames';
 
-// Where each of the model's 18 court keypoints belongs, derived by overlaying
-// its confident predictions on reference footage. "End A" is the basket end it
-// detects in that footage, "end B" the opposite end; far/near is the sideline
-// farthest from / closest to the camera. K5/K7/K8/K11 (half-court features)
-// are inferred from low-confidence predictions — keep ends and sides
-// consistent within a clip when placing by hand.
-const KEYPOINT_DESCRIPTIONS = [
-  '3pt line at baseline · far side · end A',
-  'key corner at baseline · far side · end A',
-  'baseline center behind hoop · end A',
-  'key corner at baseline · near side · end A',
-  'center circle at half-court · near side',
-  '3pt line at baseline · near side · end A',
-  'half-court line at near sideline',
-  'half-court line at far sideline',
-  'key corner at free-throw line · far side · end A',
-  'key corner at free-throw line · near side · end A',
-  'center circle at half-court · far side',
-  '3pt line at baseline · near side · end B',
-  'key corner at baseline · near side · end B',
-  'baseline center behind hoop · end B',
-  'key corner at baseline · far side · end B',
-  '3pt line at baseline · far side · end B',
-  'key corner at free-throw line · far side · end B',
-  'key corner at free-throw line · near side · end B',
-];
+// The authoritative versioned mapping is fetched on startup. Every index is a
+// fixed north/south/east/west court feature, independent of the camera view.
+let keypointSchema = null;
+let keypointFeatures = [];
+
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -43,6 +22,20 @@ let points = [];        // [{x, y, v, src_conf}] in image pixel coords
 let selectedPoint = -1;
 let dirty = false;
 let labelSource = '';
+let referenceSvgDocument = null;
+let orientationByClip = {};
+let orientationPending = false;
+
+function updateDiagramHighlight() {
+  if (!referenceSvgDocument) return;
+  referenceSvgDocument.querySelectorAll('.keypoint.active').forEach((node) => {
+    node.classList.remove('active');
+  });
+  const active = placing >= 0 ? placing : selectedPoint;
+  if (active >= 0) {
+    referenceSvgDocument.getElementById(`kpt-${active + 1}`)?.classList.add('active');
+  }
+}
 
 // view transform: screen = image * scale + offset
 let scale = 1, offsetX = 0, offsetY = 0;
@@ -50,9 +43,15 @@ let dragging = null;    // {type: 'point'|'pan', ...}
 let spaceDown = false;
 let placing = -1;       // index of the unplaced point being spawned, or -1
 
-function confColor(c) {
-  const clamped = Math.max(0, Math.min(1, c));
-  return `rgb(${Math.round(255 * (1 - clamped))}, ${Math.round(255 * clamped)}, 0)`;
+// Fixed per-keypoint colors make a landmark easy to follow between frames.
+// The surrounding interface stays neutral; color is reserved for annotations.
+const KEYPOINT_COLORS = [
+  '#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e', '#14b8a6',
+  '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7',
+  '#d946ef', '#ec4899', '#f43f5e', '#fb7185', '#f59e0b', '#10b981',
+];
+function keypointColor(index) {
+  return KEYPOINT_COLORS[index % KEYPOINT_COLORS.length];
 }
 
 function setStatus(text, isDirty) {
@@ -64,6 +63,12 @@ function setStatus(text, isDirty) {
 function markDirty() {
   dirty = true;
   setStatus('unsaved changes', true);
+}
+
+function updateRemoveButton() {
+  const button = document.getElementById('remove-point');
+  const point = points[selectedPoint];
+  button.disabled = !point || point.unplaced;
 }
 
 function fitView() {
@@ -90,7 +95,7 @@ function draw() {
   points.forEach((point, i) => {
     if (point.unplaced && i !== placing) return;
     const [sx, sy] = toScreen(point.x, point.y);
-    const color = i === placing ? '#7fb2ff' : confColor(point.src_conf);
+    const color = i === placing ? '#fafafa' : keypointColor(i);
     ctx.save();
     if (point.v === 0 && i !== placing) {
       // excluded: hollow gray ghost with an X
@@ -122,6 +127,8 @@ function draw() {
     ctx.restore();
   });
   renderPointList();
+  updateRemoveButton();
+  updateDiagramHighlight();
 }
 
 function renderPointList() {
@@ -136,10 +143,14 @@ function renderPointList() {
     const info = point.unplaced
       ? (i === placing ? 'placing…' : 'click to place')
       : `v${point.v} · ${point.src_conf.toFixed(2)}`;
-    const dotColor = point.unplaced ? '#555' : confColor(point.src_conf);
+    const dotColor = point.unplaced ? '#555' : keypointColor(i);
+    const keypoint = keypointFeatures[i];
+    const desc = keypoint
+      ? `${keypoint.feature} · ${keypoint.court_position}`
+      : 'schema unavailable';
     li.innerHTML = `<span class="dot" style="background:${dotColor}"></span>` +
       `<span class="pt">K${i + 1}<span class="v">${info}</span>` +
-      `<span class="desc">${KEYPOINT_DESCRIPTIONS[i] || ''}</span></span>`;
+      `<span class="desc">${desc}</span></span>`;
     li.addEventListener('click', () => {
       selectedPoint = i;
       if (point.unplaced) startPlacing(i);
@@ -189,38 +200,112 @@ function hitPoint(sx, sy) {
   return -1;
 }
 
+function setOrientationPanel(visible, evidence = null) {
+  orientationPending = visible;
+  document.getElementById('orientation-panel').hidden = !visible;
+  document.getElementById('orientation-fallback').hidden = !evidence;
+  if (evidence) {
+    const first = evidence.first_end_points ?? 0;
+    const second = evidence.second_end_points ?? 0;
+    document.getElementById('orientation-evidence').textContent =
+      `${evidence.reason || 'Automatic comparison was inconclusive.'} ` +
+      `(located points: first end ${first}, second end ${second}).`;
+  }
+}
+
+function showOrientationStatus(orientation) {
+  const status = document.getElementById('orientation-status');
+  if (!orientation) { status.textContent = ''; return; }
+  status.textContent = `Orientation locked at ${orientation.anchor_frame_id}: north is image left; ` +
+    `prefill normalization ${orientation.prefill_normalization}.`;
+}
+
+async function fetchOrientation(clip) {
+  if (Object.prototype.hasOwnProperty.call(orientationByClip, clip)) {
+    return orientationByClip[clip];
+  }
+  const response = await fetch(`/api/clip/${encodeURIComponent(clip)}/orientation`);
+  const data = await response.json();
+  orientationByClip[clip] = data.orientation;
+  return data.orientation;
+}
+
+async function ensureOrientation(frame) {
+  const orientation = await fetchOrientation(frame.clip_id);
+  showOrientationStatus(orientation);
+  if (orientation) {
+    setOrientationPanel(false);
+    return true;
+  }
+  setOrientationPanel(true);
+  setStatus('set the orientation anchor before model prefill is shown');
+  return false;
+}
+
+async function setOrientation(rawFirstEndRelation) {
+  if (!frames.length) return;
+  const frame = frames[index];
+  const response = await fetch(`/api/clip/${encodeURIComponent(frame.clip_id)}/orientation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frame_id: frame.frame_id, raw_first_end_relation: rawFirstEndRelation }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    setOrientationPanel(true, data.evidence || { reason: data.error || 'Could not set orientation.' });
+    setStatus('automatic orientation needs your confirmation', true);
+    return;
+  }
+  orientationByClip[frame.clip_id] = data.orientation;
+  showOrientationStatus(data.orientation);
+  setOrientationPanel(false);
+  await loadFrame(false);
+}
+
+function loadFrameImage(frame) {
+  return new Promise((resolve) => {
+    image = new Image();
+    image.onload = () => { fitView(); draw(); resolve(); };
+    image.src = '/images/' + frame.image.replace(/^frames\//, '');
+  });
+}
+
 async function loadFrame(predict) {
   if (!frames.length) { renderProgress(); draw(); return; }
   const frame = frames[index];
   setStatus('loading…');
+  selectedPoint = -1;
+  placing = -1;
+  dirty = false;
+  points = [];
+  labelSource = '';
+  await loadFrameImage(frame);
+  renderProgress();
+  if (!(await ensureOrientation(frame))) return;
+
   const url = `/api/label/${frame.frame_id}` + (predict ? '?predict=1' : '');
-  const data = await (await fetch(url)).json();
+  const response = await fetch(url);
+  const data = await response.json();
+  if (!response.ok) {
+    setStatus(data.error || 'could not load label', true);
+    return;
+  }
   points = data.label.keypoints;
-  // (0,0) with zero confidence is the model's "not found" output — treat those
-  // as unplaced: hidden until spawned from the list.
   points.forEach((point) => {
     point.unplaced = point.x === 0 && point.y === 0 && point.v === 0 && point.src_conf === 0;
   });
   labelSource = data.source;
-  selectedPoint = -1;
-  placing = -1;
-  dirty = false;
-  image = new Image();
-  image.onload = () => {
-    fitView();
-    draw();
-    if (points.length && points.every((point) => point.unplaced)) {
-      setStatus('no model prediction — click a keypoint in the list to place it');
-    } else {
-      setStatus(labelSource === 'saved' ? 'saved label loaded' : 'model prediction');
-    }
-  };
-  image.src = '/images/' + frame.image.replace(/^frames\//, '');
-  renderProgress();
+  showOrientationStatus(data.orientation);
+  draw();
+  if (points.length && points.every((point) => point.unplaced)) {
+    setStatus('no model prediction — click a keypoint in the list to place it');
+  } else {
+    setStatus(labelSource === 'saved' ? 'saved label loaded' : 'normalized model prediction');
+  }
 }
 
 async function save() {
-  if (!frames.length) return;
+  if (!frames.length || orientationPending) return;
   const frame = frames[index];
   const res = await fetch(`/api/label/${frame.frame_id}`, {
     method: 'POST',
@@ -328,6 +413,22 @@ function cycleVisibility() {
   draw();
 }
 
+function removeSelectedPoint() {
+  if (selectedPoint < 0 || !points[selectedPoint] || points[selectedPoint].unplaced) {
+    return;
+  }
+  cancelPlacing();
+  const point = points[selectedPoint];
+  point.x = 0;
+  point.y = 0;
+  point.v = 0;
+  point.src_conf = 0;
+  point.unplaced = true;
+  markDirty();
+  setStatus(`K${selectedPoint + 1} removed — click it in the list to place it again`, true);
+  draw();
+}
+
 document.addEventListener('keydown', (event) => {
   if (event.code === 'Space') { spaceDown = true; event.preventDefault(); return; }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
@@ -337,6 +438,10 @@ document.addEventListener('keydown', (event) => {
   if (key === 'arrowright') move(1);
   else if (key === 'arrowleft') move(-1);
   else if (key === 'v') cycleVisibility();
+  else if (key === 'backspace' || key === 'delete') {
+    event.preventDefault();
+    removeSelectedPoint();
+  }
   else if (key === 'r') loadFrame(true);
   else if (key === 'escape') cancelPlacing();
 });
@@ -345,12 +450,27 @@ document.addEventListener('keyup', (event) => {
 });
 
 document.getElementById('save').addEventListener('click', save);
+document.getElementById('anchor-auto').addEventListener('click', () => setOrientation('auto'));
+document.getElementById('anchor-first-left').addEventListener('click', () => setOrientation('left'));
+document.getElementById('anchor-first-right').addEventListener('click', () => setOrientation('right'));
 document.getElementById('repredict').addEventListener('click', () => loadFrame(true));
+document.getElementById('remove-point').addEventListener('click', removeSelectedPoint);
 document.getElementById('prev').addEventListener('click', () => move(-1));
 document.getElementById('next').addEventListener('click', () => move(1));
 window.addEventListener('resize', () => { fitView(); draw(); });
 
 async function init() {
+  const reference = document.getElementById('court-reference');
+  const connectReference = () => {
+    referenceSvgDocument = reference.contentDocument;
+    updateDiagramHighlight();
+  };
+  reference.addEventListener('load', connectReference);
+  if (reference.contentDocument) connectReference();
+  const schemaResponse = await fetch('/api/keypoint-schema');
+  if (!schemaResponse.ok) throw new Error('Could not load the keypoint schema');
+  keypointSchema = await schemaResponse.json();
+  keypointFeatures = keypointSchema.keypoints || [];
   const params = new URLSearchParams({ triage: 'keep' });
   if (clipId) params.set('clip', clipId);
   const data = await (await fetch('/api/frames?' + params)).json();

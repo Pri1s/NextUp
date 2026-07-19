@@ -50,21 +50,21 @@ or production pipeline.
 
 ## Training-data pipeline
 
-Turns raw game clips into corrected keypoint labels in four steps. All state
-lives in `dataset/manifest.json`; every command prints progress counts (clips,
-candidates, keep/skip, labeled) when it finishes.
+Turns raw game clips into corrected canonical-court labels. State lives in
+`dataset/manifest.json`; each command prints progress counts.
 
-**1. Extract candidate frames.** Drop clips into `input_videos/` and run:
+**1. Reset and extract candidate frames.** Drop clips into `input_videos/`,
+then start a new labeling run with:
 
 ```bash
-python3 extract_frames.py            # one random frame per second of footage
+python3 extract_frames.py --reset     # one deterministic candidate per two seconds
 ```
 
-Sampling adapts to each clip's own length and frame rate, and is seeded per
-clip so re-extraction always picks the same frames. Already-extracted clips
-are skipped, so re-run it whenever you add footage.
-Use `--interval` to change the sampling rate, `--force --clip ID` to redo one
-clip (triage/label decisions are preserved).
+`--reset` removes only derived state: `dataset/frames`, `dataset/thumbs`,
+`dataset/labels`, `dataset/manifest.json`, and `export/`. It preserves input
+videos, schemas, and source code, then extracts every input clip from scratch.
+Without `--reset`, existing clips at the same cadence are skipped. Use
+`--interval` to choose a different cadence; the default is `2.0` seconds.
 
 **2 & 3. Triage and label in the browser.**
 
@@ -72,22 +72,26 @@ clip (triage/label decisions are preserved).
 python3 serve.py                     # then open http://127.0.0.1:8000
 ```
 
-- *Triage view* (per clip): thumbnail grid; click a frame to cycle
-  pending → keep → skip, or use arrows + `K`/`S`/`U`. Saves on every click.
-- *Label view*: steps through kept frames with the model's predicted keypoints
-  drawn on a zoomable canvas (red→green by confidence). Drag points to correct
-  them, `V`/right-click cycles visibility (2 visible / 1 occluded / 0 excluded),
-  `←`/`→` moves between frames and autosaves. Labels are written to
+- *Triage view* (per clip): click a frame to cycle pending → keep → skip, or
+  use arrows with `K`/`S`/`U`.
+- *Orientation anchor*: before the first model prefill for a clip, choose its
+  anchor frame. In the supplied broadcast footage, north is recorded as the
+  basket on that image’s left side. The app compares raw end-group mean X
+  positions, locks either the identity or 180-degree normalization, and records
+  it in the clip manifest. If the comparison is inconclusive, choose whether
+  the raw first end is left or right explicitly.
+- *Label view*: fresh prefill is already normalized to the fixed K1–K18 court
+  map. The static north-at-top, east-at-right diagram highlights the selected
+  point. Drag points to correct them; remove and replace points as needed;
+  `V`/right-click cycles visibility (2 visible / 1 occluded / 0 excluded).
+  Labels include schema and orientation provenance under
   `dataset/labels/<clip>/<frame>.json`.
-- *Labeling from scratch*: on frames where the model finds no court (for
-  example a camera angle it was never trained on), all keypoints start
-  "unplaced" and hidden. The sidebar lists every keypoint with a short
-  description of the court feature it marks; click an unplaced one to spawn it
-  on the canvas, move the mouse to position it, and click to drop it
-  (`Esc` cancels). Never-placed points are saved as `(0, 0)` with
-  visibility 0, which `export_yolo.py` already treats as absent.
+- *Labeling from scratch*: unplaced points are hidden. Click a point in the
+  list, move the mouse, and click on the frame to drop it. Never-placed points
+  are saved as `(0, 0)` with visibility 0.
 
-Don't run `extract_frames.py` while the server is up — both write the manifest.
+Do not run `extract_frames.py` while the server is up because both write the
+manifest.
 
 **4. Export for training.**
 
@@ -95,8 +99,18 @@ Don't run `extract_frames.py` while the server is up — both write the manifest
 python3 export_yolo.py               # writes export/court_pose/
 ```
 
-Produces a YOLO pose dataset (`images/`, `labels/`, `data.yaml`) from all
-labeled frames with a deterministic train/val split. Note: `flip_idx` is not
-defined yet, so train with `fliplr: 0.0`.
+The exporter validates every saved label against the canonical schema, writes
+a deterministic train/validation split, copies `court_keypoints.v2.json` into
+the export, and writes the east/west reflection `flip_idx` in `data.yaml`.
 
-`python3 pipeline_manifest.py` prints the current counts at any time.
+`python3 pipeline_manifest.py` prints current counts.
+
+## Keypoint semantics
+
+[`dataset/schemas/court_keypoints.v2.json`](dataset/schemas/court_keypoints.v2.json)
+is the authoritative K1–K18 mapping. It defines north at the top baseline and
+east at the right sideline, records the diagram markers and the two allowed
+raw-prefill permutations, and contains only trained court landmarks: baseline
+features, sideline/midcourt intersections, and free-throw-line lane corners.
+The adjacent audit records the reviewed geometry. Every saved label and export
+uses this one canonical index meaning.
