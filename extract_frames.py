@@ -1,15 +1,19 @@
 """Extract sparse candidate frames from game clips for triage and labeling.
 
-Samples roughly one frame per --interval seconds from every video found in the
-input directory, writing a full-resolution JPEG plus a small thumbnail per
-sampled frame and recording provenance (clip, frame index, timestamp) in the
-shared manifest. Re-running is safe: clips already extracted with the same
-interval are skipped, and existing triage/label decisions are never touched.
+Samples one random frame from every --interval seconds of footage in each
+video found in the input directory, writing a full-resolution JPEG plus a
+small thumbnail per sampled frame and recording provenance (clip, frame index,
+timestamp) in the shared manifest. Sampling is length-agnostic (the window
+size is derived from each clip's own fps) and deterministic per clip, so
+re-running is safe: clips already extracted with the same interval are
+skipped, re-extraction picks the same frames, and existing triage/label
+decisions are never touched.
 """
 
 from __future__ import annotations
 
 import argparse
+import random
 import re
 from datetime import datetime
 from pathlib import Path
@@ -110,6 +114,13 @@ def extract_clip(
     frames_dir.mkdir(parents=True, exist_ok=True)
     thumbs_dir.mkdir(parents=True, exist_ok=True)
 
+    # One random frame per window of `step` frames. Seeding the RNG with the
+    # clip id makes the choice deterministic, so a --force re-extraction picks
+    # the same frames and existing triage/label decisions still apply.
+    rng = random.Random(clip_id)
+    window_start = 0
+    target_index = rng.randrange(step)
+
     frame_entries: dict[str, dict] = {}
     frame_index = 0
     try:
@@ -118,7 +129,7 @@ def extract_clip(
         while True:
             if not capture.grab():
                 break
-            if frame_index % step == 0:
+            if frame_index == target_index:
                 read_success, frame = capture.retrieve()
                 if not read_success:
                     break
@@ -145,6 +156,9 @@ def extract_clip(
                     "label_status": "unlabeled",
                 }
             frame_index += 1
+            if frame_index >= window_start + step:
+                window_start += step
+                target_index = window_start + rng.randrange(step)
     finally:
         capture.release()
 

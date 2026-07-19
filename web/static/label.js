@@ -5,6 +5,33 @@ const pathParts = location.pathname.split('/').filter(Boolean);
 const clipId = pathParts.length > 1 ? decodeURIComponent(pathParts[1]) : null;
 document.getElementById('clip-name').textContent = clipId || 'all kept frames';
 
+// Where each of the model's 18 court keypoints belongs, derived by overlaying
+// its confident predictions on reference footage. "End A" is the basket end it
+// detects in that footage, "end B" the opposite end; far/near is the sideline
+// farthest from / closest to the camera. K5/K7/K8/K11 (half-court features)
+// are inferred from low-confidence predictions — keep ends and sides
+// consistent within a clip when placing by hand.
+const KEYPOINT_DESCRIPTIONS = [
+  '3pt line at baseline · far side · end A',
+  'key corner at baseline · far side · end A',
+  'baseline center behind hoop · end A',
+  'key corner at baseline · near side · end A',
+  'center circle at half-court · near side',
+  '3pt line at baseline · near side · end A',
+  'half-court line at near sideline',
+  'half-court line at far sideline',
+  'key corner at free-throw line · far side · end A',
+  'key corner at free-throw line · near side · end A',
+  'center circle at half-court · far side',
+  '3pt line at baseline · near side · end B',
+  'key corner at baseline · near side · end B',
+  'baseline center behind hoop · end B',
+  'key corner at baseline · far side · end B',
+  '3pt line at baseline · far side · end B',
+  'key corner at free-throw line · far side · end B',
+  'key corner at free-throw line · near side · end B',
+];
+
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const wrap = document.getElementById('canvas-wrap');
@@ -21,6 +48,7 @@ let labelSource = '';
 let scale = 1, offsetX = 0, offsetY = 0;
 let dragging = null;    // {type: 'point'|'pan', ...}
 let spaceDown = false;
+let placing = -1;       // index of the unplaced point being spawned, or -1
 
 function confColor(c) {
   const clamped = Math.max(0, Math.min(1, c));
@@ -60,10 +88,11 @@ function draw() {
   ctx.restore();
 
   points.forEach((point, i) => {
+    if (point.unplaced && i !== placing) return;
     const [sx, sy] = toScreen(point.x, point.y);
-    const color = confColor(point.src_conf);
+    const color = i === placing ? '#7fb2ff' : confColor(point.src_conf);
     ctx.save();
-    if (point.v === 0) {
+    if (point.v === 0 && i !== placing) {
       // excluded: hollow gray ghost with an X
       ctx.strokeStyle = '#888';
       ctx.lineWidth = 1.5;
@@ -88,7 +117,7 @@ function draw() {
     }
     ctx.globalAlpha = 1;
     ctx.font = '11px sans-serif';
-    ctx.fillStyle = point.v === 0 ? '#888' : color;
+    ctx.fillStyle = point.v === 0 && i !== placing ? '#888' : color;
     ctx.fillText(`K${i + 1} ${point.src_conf.toFixed(2)}`, sx + 10, sy - 8);
     ctx.restore();
   });
@@ -100,12 +129,46 @@ function renderPointList() {
   list.innerHTML = '';
   points.forEach((point, i) => {
     const li = document.createElement('li');
-    li.className = i === selectedPoint ? 'selected' : '';
-    li.innerHTML = `<span class="dot" style="background:${confColor(point.src_conf)}"></span>` +
-      `K${i + 1}<span class="v">v${point.v} · ${point.src_conf.toFixed(2)}</span>`;
-    li.addEventListener('click', () => { selectedPoint = i; draw(); });
+    li.className = [
+      i === selectedPoint ? 'selected' : '',
+      point.unplaced ? 'unplaced' : '',
+    ].join(' ').trim();
+    const info = point.unplaced
+      ? (i === placing ? 'placing…' : 'click to place')
+      : `v${point.v} · ${point.src_conf.toFixed(2)}`;
+    const dotColor = point.unplaced ? '#555' : confColor(point.src_conf);
+    li.innerHTML = `<span class="dot" style="background:${dotColor}"></span>` +
+      `<span class="pt">K${i + 1}<span class="v">${info}</span>` +
+      `<span class="desc">${KEYPOINT_DESCRIPTIONS[i] || ''}</span></span>`;
+    li.addEventListener('click', () => {
+      selectedPoint = i;
+      if (point.unplaced) startPlacing(i);
+      else { cancelPlacing(); draw(); }
+    });
     list.appendChild(li);
   });
+}
+
+function startPlacing(i) {
+  placing = i;
+  selectedPoint = i;
+  // Spawn in the center of the view; it follows the mouse until dropped.
+  const point = points[i];
+  const [ix, iy] = toImage(wrap.clientWidth / 2, wrap.clientHeight / 2);
+  point.x = Math.max(0, Math.min(image.width, ix));
+  point.y = Math.max(0, Math.min(image.height, iy));
+  setStatus(`placing K${i + 1} — click on the image to drop, Esc cancels`, true);
+  draw();
+}
+
+function cancelPlacing() {
+  if (placing < 0) return;
+  const point = points[placing];
+  point.x = 0;
+  point.y = 0;
+  placing = -1;
+  setStatus(dirty ? 'unsaved changes' : 'ready', dirty);
+  draw();
 }
 
 function renderProgress() {
@@ -119,6 +182,7 @@ function renderProgress() {
 
 function hitPoint(sx, sy) {
   for (let i = points.length - 1; i >= 0; i--) {
+    if (points[i].unplaced) continue;
     const [px, py] = toScreen(points[i].x, points[i].y);
     if (Math.hypot(px - sx, py - sy) <= 12) return i;
   }
@@ -132,11 +196,25 @@ async function loadFrame(predict) {
   const url = `/api/label/${frame.frame_id}` + (predict ? '?predict=1' : '');
   const data = await (await fetch(url)).json();
   points = data.label.keypoints;
+  // (0,0) with zero confidence is the model's "not found" output — treat those
+  // as unplaced: hidden until spawned from the list.
+  points.forEach((point) => {
+    point.unplaced = point.x === 0 && point.y === 0 && point.v === 0 && point.src_conf === 0;
+  });
   labelSource = data.source;
   selectedPoint = -1;
+  placing = -1;
   dirty = false;
   image = new Image();
-  image.onload = () => { fitView(); draw(); setStatus(labelSource === 'saved' ? 'saved label loaded' : 'model prediction'); };
+  image.onload = () => {
+    fitView();
+    draw();
+    if (points.length && points.every((point) => point.unplaced)) {
+      setStatus('no model prediction — click a keypoint in the list to place it');
+    } else {
+      setStatus(labelSource === 'saved' ? 'saved label loaded' : 'model prediction');
+    }
+  };
   image.src = '/images/' + frame.image.replace(/^frames\//, '');
   renderProgress();
 }
@@ -147,7 +225,9 @@ async function save() {
   const res = await fetch(`/api/label/${frame.frame_id}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keypoints: points }),
+    body: JSON.stringify({
+      keypoints: points.map(({ x, y, v, src_conf }) => ({ x, y, v, src_conf })),
+    }),
   });
   if (res.ok) {
     dirty = false;
@@ -174,6 +254,19 @@ canvas.addEventListener('mousedown', (event) => {
     return;
   }
   if (event.button !== 0) return;
+  if (placing >= 0) {
+    const [ix, iy] = toImage(sx, sy);
+    const point = points[placing];
+    point.x = Math.max(0, Math.min(image.width, ix));
+    point.y = Math.max(0, Math.min(image.height, iy));
+    point.unplaced = false;
+    point.v = 2;
+    selectedPoint = placing;
+    placing = -1;
+    markDirty();
+    draw();
+    return;
+  }
   const hit = hitPoint(sx, sy);
   if (hit >= 0) {
     selectedPoint = hit;
@@ -183,7 +276,16 @@ canvas.addEventListener('mousedown', (event) => {
 });
 
 canvas.addEventListener('mousemove', (event) => {
-  if (!dragging) return;
+  if (!dragging) {
+    if (placing >= 0) {
+      const [ix, iy] = toImage(event.offsetX, event.offsetY);
+      const point = points[placing];
+      point.x = Math.max(0, Math.min(image.width, ix));
+      point.y = Math.max(0, Math.min(image.height, iy));
+      draw();
+    }
+    return;
+  }
   if (dragging.type === 'pan') {
     offsetX = dragging.ox + (event.offsetX - dragging.startX);
     offsetY = dragging.oy + (event.offsetY - dragging.startY);
@@ -219,7 +321,7 @@ canvas.addEventListener('contextmenu', (event) => {
 });
 
 function cycleVisibility() {
-  if (selectedPoint < 0) return;
+  if (selectedPoint < 0 || points[selectedPoint].unplaced) return;
   const point = points[selectedPoint];
   point.v = point.v === 2 ? 1 : point.v === 1 ? 0 : 2;
   markDirty();
@@ -236,6 +338,7 @@ document.addEventListener('keydown', (event) => {
   else if (key === 'arrowleft') move(-1);
   else if (key === 'v') cycleVisibility();
   else if (key === 'r') loadFrame(true);
+  else if (key === 'escape') cancelPlacing();
 });
 document.addEventListener('keyup', (event) => {
   if (event.code === 'Space') spaceDown = false;

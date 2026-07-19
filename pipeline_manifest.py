@@ -118,10 +118,11 @@ def main() -> None:
     print_counts(data)
     for clip_id in sorted(data.get("clips", {})):
         tally = counts(data, clip_id=clip_id)
+        done = " [DONE]" if data["clips"][clip_id].get("done") else ""
         print(
             f"  {clip_id}: {tally['candidates']} candidates, "
             f"{tally['pending']} pending, {tally['keep']} keep, "
-            f"{tally['skip']} skip, {tally['labeled']} labeled"
+            f"{tally['skip']} skip, {tally['labeled']} labeled{done}"
         )
 
 
