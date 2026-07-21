@@ -74,12 +74,13 @@ python3 serve.py                     # then open http://127.0.0.1:8000
 
 - *Triage view* (per clip): click a frame to cycle pending → keep → skip, or
   use arrows with `K`/`S`/`U`.
-- *Orientation anchor*: before the first model prefill for a clip, choose its
-  anchor frame. In the supplied broadcast footage, north is recorded as the
-  basket on that image’s left side. The app compares raw end-group mean X
-  positions, locks either the identity or 180-degree normalization, and records
-  it in the clip manifest. If the comparison is inconclusive, choose whether
-  the raw first end is left or right explicitly.
+- *Orientation anchor*: before the first model prefill for a clip, the app
+  draws the model’s raw detections on the frame as two neutral end groups
+  (Group A and Group B) and asks which side of the frame the Group A end is
+  on — answer from the overlay, or let the app measure the groups’ mean X
+  positions automatically. Either way it locks the identity or 180-degree
+  normalization for the clip and records it in the manifest; north is the
+  image-left basket at the anchor frame.
 - *Label view*: fresh prefill is already normalized to the fixed K1–K18 court
   map. The static north-at-top, east-at-right diagram highlights the selected
   point. Drag points to correct them; remove and replace points as needed;

@@ -25,6 +25,40 @@ let labelSource = '';
 let referenceSvgDocument = null;
 let orientationByClip = {};
 let orientationPending = false;
+let rawPoints = null;    // raw model output previewed before orientation is locked
+let rawEndGroups = null; // {first: [...], second: [...]} raw index groups
+
+// Neutral group markers for the pre-orientation preview: no K-numbers and no
+// court directions, because both only exist once orientation is answered.
+// Colors must stay in sync with .group-a / .group-b in style.css.
+const RAW_GROUP_STYLE = {
+  first: { color: '#f59e0b', label: 'A' },
+  second: { color: '#38bdf8', label: 'B' },
+};
+
+function rawGroupName(rawIndex) {
+  if (!rawEndGroups) return null;
+  if (rawEndGroups.first.includes(rawIndex)) return 'first';
+  if (rawEndGroups.second.includes(rawIndex)) return 'second';
+  return null;
+}
+
+// Same "located" definition the server's auto-detect uses, so the labeler sees
+// exactly the points the automatic comparison would measure.
+function locatedRawPoint(point) {
+  return point.v > 0 && !(point.x === 0 && point.y === 0);
+}
+
+// groupName omitted matches either group (used for the "anything detected at
+// all" check); pass 'first' or 'second' to check one specific end group.
+function hasVisibleRawGroupPoint(groupName) {
+  if (!rawPoints) return false;
+  return rawPoints.some((point, i) => {
+    if (!locatedRawPoint(point)) return false;
+    const group = rawGroupName(i);
+    return groupName ? group === groupName : !!group;
+  });
+}
 
 function updateDiagramHighlight() {
   if (!referenceSvgDocument) return;
@@ -126,9 +160,31 @@ function draw() {
     ctx.fillText(`K${i + 1} ${point.src_conf.toFixed(2)}`, sx + 10, sy - 8);
     ctx.restore();
   });
+  if (orientationPending && rawPoints) drawRawPreview();
   renderPointList();
   updateRemoveButton();
   updateDiagramHighlight();
+}
+
+function drawRawPreview() {
+  rawPoints.forEach((point, i) => {
+    if (!locatedRawPoint(point)) return;
+    const group = rawGroupName(i);
+    const style = group ? RAW_GROUP_STYLE[group] : null;
+    const color = style ? style.color : '#9ca3af';
+    const [sx, sy] = toScreen(point.x, point.y);
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.stroke();
+    if (style) {
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(style.label, sx + 10, sy - 8);
+    }
+    ctx.restore();
+  });
 }
 
 function renderPointList() {
@@ -204,12 +260,53 @@ function setOrientationPanel(visible, evidence = null) {
   orientationPending = visible;
   document.getElementById('orientation-panel').hidden = !visible;
   document.getElementById('orientation-fallback').hidden = !evidence;
+  updateOrientationButtons();
   if (evidence) {
     const first = evidence.first_end_points ?? 0;
     const second = evidence.second_end_points ?? 0;
     document.getElementById('orientation-evidence').textContent =
       `${evidence.reason || 'Automatic comparison was inconclusive.'} ` +
-      `(located points: first end ${first}, second end ${second}).`;
+      `(located points: Group A ${first}, Group B ${second}).`;
+  }
+}
+
+// The question asks specifically where the Group A end sits on screen, so
+// it's only answerable once a Group A point is actually drawn — a visible
+// Group B alone doesn't tell the labeler anything about Group A's side.
+function updateOrientationButtons() {
+  const answerable = hasVisibleRawGroupPoint('first');
+  document.getElementById('anchor-first-left').disabled = !answerable;
+  document.getElementById('anchor-first-right').disabled = !answerable;
+}
+
+async function loadRawPreview(frame) {
+  rawPoints = null;
+  updateOrientationButtons();
+  draw();
+  setStatus('running the model for the group preview…');
+  let data;
+  try {
+    const response = await fetch(`/api/frame/${frame.frame_id}/raw-prediction`);
+    data = await response.json();
+    if (!response.ok) {
+      setStatus(data.error || 'could not load the raw prediction', true);
+      return;
+    }
+  } catch {
+    setStatus('could not load the raw prediction', true);
+    return;
+  }
+  if (frames[index] !== frame) return; // labeler moved on during inference
+  rawPoints = data.points;
+  rawEndGroups = data.raw_end_groups;
+  updateOrientationButtons();
+  draw();
+  if (hasVisibleRawGroupPoint('first')) {
+    setStatus('raw detections shown — answer the Group A question to unlock labeling');
+  } else if (hasVisibleRawGroupPoint('second')) {
+    setStatus('only Group B is visible here — use ←/→ to find a frame showing Group A, or try auto-detect');
+  } else {
+    setStatus('no confident detections here — use ←/→ to anchor on another frame');
   }
 }
 
@@ -238,7 +335,6 @@ async function ensureOrientation(frame) {
     return true;
   }
   setOrientationPanel(true);
-  setStatus('set the orientation anchor before model prefill is shown');
   return false;
 }
 
@@ -253,7 +349,7 @@ async function setOrientation(rawFirstEndRelation) {
   const data = await response.json();
   if (!response.ok) {
     setOrientationPanel(true, data.evidence || { reason: data.error || 'Could not set orientation.' });
-    setStatus('automatic orientation needs your confirmation', true);
+    setStatus('auto-detect was inconclusive — answer the Group A question instead', true);
     return;
   }
   orientationByClip[frame.clip_id] = data.orientation;
@@ -278,10 +374,16 @@ async function loadFrame(predict) {
   placing = -1;
   dirty = false;
   points = [];
+  rawPoints = null;
   labelSource = '';
   await loadFrameImage(frame);
   renderProgress();
-  if (!(await ensureOrientation(frame))) return;
+  if (!(await ensureOrientation(frame))) {
+    // No orientation yet: show the neutral raw-group overlay first, so the
+    // Group A left/right question is answerable from what is on screen.
+    await loadRawPreview(frame);
+    return;
+  }
 
   const url = `/api/label/${frame.frame_id}` + (predict ? '?predict=1' : '');
   const response = await fetch(url);

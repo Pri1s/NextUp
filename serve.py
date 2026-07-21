@@ -99,10 +99,10 @@ def infer_orientation(points: list[dict], image_width: int) -> tuple[str | None,
         "second_end_points": second_count,
     }
     if first_count < ORIENTATION_MIN_POINTS_PER_END or second_count < ORIENTATION_MIN_POINTS_PER_END:
-        evidence["reason"] = "both raw end groups need at least two located points"
+        evidence["reason"] = "both end groups (A and B) need at least two located points"
         return None, evidence
     if abs(first_x - second_x) < max(12.0, image_width * ORIENTATION_MIN_X_SEPARATION_FRACTION):
-        evidence["reason"] = "raw end-group mean X positions are too close to anchor reliably"
+        evidence["reason"] = "Group A and Group B mean X positions are too close to anchor reliably"
         return None, evidence
     # Footage uses a left/right court axis: north is the image-left basket.
     if first_x < second_x:
@@ -314,6 +314,27 @@ def api_set_orientation(clip_id: str):
         "clip_id": clip_id,
         "orientation": orientation_for_response(orientation),
         "already_locked": existing is not None,
+    })
+
+
+@app.get("/api/frame/<frame_id>/raw-prediction")
+def api_raw_prediction(frame_id: str):
+    """Raw, un-normalized model points for the pre-orientation group preview.
+
+    Available before the clip orientation is locked, unlike /api/label, so the
+    labeler can see the two raw end groups while answering the orientation
+    question. Never persisted; canonical labels always go through /api/label.
+    """
+    frame = state["manifest"]["frames"].get(frame_id)
+    if frame is None:
+        abort(404, f"Unknown frame: {frame_id}")
+    schema = load_keypoint_schema()
+    points = predict_keypoints(state["dataset_dir"] / frame["image"])
+    return jsonify({
+        "frame_id": frame_id,
+        "points": points,
+        "raw_end_groups": schema["normalization"]["raw_end_groups"],
+        "schema": schema_provenance(),
     })
 
 

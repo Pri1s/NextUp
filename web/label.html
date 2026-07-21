@@ -34,14 +34,18 @@
 
       <section id="orientation-panel" class="sidebar-section orientation-panel" hidden aria-live="polite">
         <h2>Set clip orientation</h2>
-        <p>Anchor this clip before prefill: north is the basket on this frame’s image-left side. This setting is locked for the clip.</p>
-        <button class="btn primary" id="anchor-auto">Use this frame as anchor</button>
+        <p>The model’s raw detections are drawn on the frame as two end groups:
+          <span class="group-key group-a">Group A</span> and
+          <span class="group-key group-b">Group B</span>. Gray dots are midcourt.</p>
+        <p>Which side of the frame is the Group A end on?</p>
+        <button class="btn" id="anchor-first-left" disabled>Group A is left</button>
+        <button class="btn" id="anchor-first-right" disabled>Group A is right</button>
+        <p>Or let the app measure the two groups’ positions on this frame:</p>
+        <button class="btn" id="anchor-auto">Auto-detect from this frame</button>
         <div id="orientation-fallback" hidden>
           <p id="orientation-evidence"></p>
-          <p>Choose the raw K1–K10 end’s screen position for this clip:</p>
-          <button class="btn" id="anchor-first-left">It is left</button>
-          <button class="btn" id="anchor-first-right">It is right</button>
         </div>
+        <p>Either way, north becomes the image-left basket and the choice is locked for the whole clip.</p>
       </section>
 
       <section class="sidebar-section">

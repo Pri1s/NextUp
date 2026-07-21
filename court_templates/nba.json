@@ -1,0 +1,49 @@
+{
+  "name": "nba",
+  "units": "feet",
+  "dimensions": {"length": 94.0, "width": 50.0},
+  "keypoints": {
+    "north_baseline_sideline_east": [0.0, 50.0],
+    "north_three_point_baseline_east": [0.0, 47.0],
+    "north_lane_baseline_east": [0.0, 33.0],
+    "north_lane_baseline_west": [0.0, 17.0],
+    "north_three_point_baseline_west": [0.0, 3.0],
+    "north_baseline_sideline_west": [0.0, 0.0],
+    "midcourt_sideline_west": [47.0, 0.0],
+    "midcourt_sideline_east": [47.0, 50.0],
+    "north_lane_free_throw_east": [19.0, 33.0],
+    "north_lane_free_throw_west": [19.0, 17.0],
+    "south_baseline_sideline_west": [94.0, 0.0],
+    "south_three_point_baseline_west": [94.0, 3.0],
+    "south_lane_baseline_west": [94.0, 17.0],
+    "south_lane_baseline_east": [94.0, 33.0],
+    "south_three_point_baseline_east": [94.0, 47.0],
+    "south_baseline_sideline_east": [94.0, 50.0],
+    "south_lane_free_throw_east": [75.0, 33.0],
+    "south_lane_free_throw_west": [75.0, 17.0]
+  },
+  "lines": [
+    {"id": "west_sideline", "p1": [0, 0], "p2": [94, 0], "kind": "boundary"},
+    {"id": "east_sideline", "p1": [0, 50], "p2": [94, 50], "kind": "boundary"},
+    {"id": "north_baseline", "p1": [0, 0], "p2": [0, 50], "kind": "boundary"},
+    {"id": "south_baseline", "p1": [94, 0], "p2": [94, 50], "kind": "boundary"},
+    {"id": "midcourt", "p1": [47, 0], "p2": [47, 50], "kind": "midcourt"},
+    {"id": "north_lane_west", "p1": [0, 17], "p2": [19, 17], "kind": "lane"},
+    {"id": "north_lane_east", "p1": [0, 33], "p2": [19, 33], "kind": "lane"},
+    {"id": "north_free_throw", "p1": [19, 17], "p2": [19, 33], "kind": "lane"},
+    {"id": "south_lane_west", "p1": [75, 17], "p2": [94, 17], "kind": "lane"},
+    {"id": "south_lane_east", "p1": [75, 33], "p2": [94, 33], "kind": "lane"},
+    {"id": "south_free_throw", "p1": [75, 17], "p2": [75, 33], "kind": "lane"},
+    {"id": "north_three_corner_west", "p1": [0, 3], "p2": [14, 3], "kind": "three_point"},
+    {"id": "north_three_corner_east", "p1": [0, 47], "p2": [14, 47], "kind": "three_point"},
+    {"id": "south_three_corner_west", "p1": [80, 3], "p2": [94, 3], "kind": "three_point"},
+    {"id": "south_three_corner_east", "p1": [80, 47], "p2": [94, 47], "kind": "three_point"}
+  ],
+  "arcs": [
+    {"id": "north_free_throw_circle", "center": [19, 25], "radius": 6.0, "kind": "free_throw_circle"},
+    {"id": "south_free_throw_circle", "center": [75, 25], "radius": 6.0, "kind": "free_throw_circle"},
+    {"id": "center_circle", "center": [47, 25], "radius": 6.0, "kind": "center_circle"},
+    {"id": "north_three_point_arc", "center": [5.25, 25], "radius": 23.75, "kind": "three_point_arc"},
+    {"id": "south_three_point_arc", "center": [88.75, 25], "radius": 23.75, "kind": "three_point_arc"}
+  ]
+}
