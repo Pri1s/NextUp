@@ -27,33 +27,45 @@
           <span>canonical</span>
         </div>
         <object id="court-reference" type="image/svg+xml"
-          data="/static/court-keypoints-reference.svg"
           aria-label="Numbered canonical basketball court, north at top and east at right"></object>
         <p>North is top · east is right</p>
       </section>
 
       <section id="orientation-panel" class="sidebar-section orientation-panel" hidden aria-live="polite">
         <h2>Set clip orientation</h2>
-        <p>The model’s raw detections are drawn on the frame as two end groups:
-          <span class="group-key group-a">Group A</span> and
-          <span class="group-key group-b">Group B</span>. Gray dots are midcourt.</p>
-        <p>Which side of the frame is the Group A end on?</p>
-        <button class="btn" id="anchor-first-left" disabled>Group A is left</button>
-        <button class="btn" id="anchor-first-right" disabled>Group A is right</button>
-        <p>Or let the app measure the two groups’ positions on this frame:</p>
-        <button class="btn" id="anchor-auto">Auto-detect from this frame</button>
-        <div id="orientation-fallback" hidden>
-          <p id="orientation-evidence"></p>
+        <p><b>North is always the image-left basket.</b> Use <kbd>←</kbd><kbd>→</kbd> to find a
+          frame where both baskets are discernible, then lock the anchor:</p>
+        <button class="btn primary" id="anchor-both">Both baskets discernible — lock north = image-left</button>
+        <details id="orientation-fallback">
+          <summary>No frame in this clip shows both baskets…</summary>
+          <p>Declare which canonical end this frame shows, using clip context
+            (play direction, benches, scoreboard):</p>
+          <button class="btn" id="anchor-declare-north">This end is North</button>
+          <button class="btn" id="anchor-declare-south">This end is South</button>
+        </details>
+        <p>The anchor is locked once for the whole clip and recorded with every saved label.</p>
+      </section>
+
+      <section id="ends-panel" class="sidebar-section ends-panel" hidden>
+        <div class="side-heading">
+          <h2>Visible ends</h2>
+          <span id="ends-state">confirm</span>
         </div>
-        <p>Either way, north becomes the image-left basket and the choice is locked for the whole clip.</p>
+        <div class="ends-options" role="radiogroup" aria-label="Which ends of the court are visible in this frame">
+          <button class="btn" data-ends="north">North <kbd>1</kbd></button>
+          <button class="btn" data-ends="both">Both <kbd>2</kbd></button>
+          <button class="btn" data-ends="south">South <kbd>3</kbd></button>
+        </div>
+        <p>Confirm on every frame which end(s) are in view — saving is blocked until you do,
+          and points from a non-visible end can't be placed.</p>
       </section>
 
       <section class="sidebar-section">
         <div id="orientation-status" class="orientation-status"></div>
         <div class="toolbar" aria-label="Frame actions">
           <button class="btn primary" id="save">Save <kbd>⌘S</kbd></button>
-          <button class="btn" id="repredict">Re-predict <kbd>R</kbd></button>
           <button class="btn danger" id="remove-point" disabled>Remove selected <kbd>⌫</kbd></button>
+          <button class="btn" id="repredict" hidden>Re-predict <kbd>R</kbd></button>
           <button class="btn" id="prev">← Previous</button>
           <button class="btn" id="next">Next →</button>
         </div>
@@ -62,17 +74,17 @@
       <section class="sidebar-section" aria-labelledby="keypoints-title">
         <div class="side-heading">
           <h2 id="keypoints-title">Keypoints</h2>
-          <span>K1–K18</span>
+          <span id="keypoints-count"></span>
         </div>
         <ul id="point-list"></ul>
       </section>
 
       <section class="keys" aria-label="Keyboard and interaction help">
-        Drag to move · click a list item to select.<br>
-        Removed or unplaced points can be restored by selecting them in the list, then clicking the frame. <kbd>Esc</kbd> cancels placement.<br>
-        <kbd>V</kbd> or right-click cycles visible / occluded / excluded.<br>
+        Drag to move · click a list item to select or place it. <kbd>Esc</kbd> cancels placement.<br>
+        <kbd>V</kbd> or right-click toggles visible / occluded · <kbd>⌫</kbd> unlabels the selected point.<br>
+        <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> confirm visible ends (north / both / south).<br>
         <kbd>←</kbd><kbd>→</kbd> changes frame and autosaves · wheel zooms · <kbd>Space</kbd>+drag pans.<br>
-        Labels follow <code>court_keypoints.v2.json</code>; the locked orientation normalizes prefill to the map above.
+        Labels follow <code>court_keypoints.v3.json</code>; every point is a fixed, absolute court location.
       </section>
     </aside>
   </div>

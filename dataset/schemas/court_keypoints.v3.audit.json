@@ -1,0 +1,37 @@
+{
+  "schema_name": "basketball-court-keypoints",
+  "schema_version": "3.0.0",
+  "audited_at": "2026-07-20",
+  "status": "draft pending operator sign-off (point set, orientation rule, horizontal_flip choice)",
+  "supersedes": {
+    "schema_version": "2.1.0",
+    "reason": "v2 point semantics were reconstructed from the reloc2-trained model (models/court_keypoint_detector.pt) whose annotation guide was never available; v3 is defined from scratch for hand labeling and shares no provenance with that model. v2 labels and v2 clip orientation blocks are incompatible and are removed by migrate_to_v3.py."
+  },
+  "point_inventory": {
+    "carried_over_features": "The 18 straight-line intersections (4 baseline/sideline corners, 4 three-point/baseline junctions, 8 lane corners, 2 midcourt/sideline intersections) reuse the template naming grammar from court_templates/{nba,fiba,eybl}.json but are re-founded here with independently written definitions; their v2 indices are NOT preserved.",
+    "added_points": [
+      {
+        "id": "north_three_point_apex / south_three_point_apex",
+        "rationale": "Zoomed half-court broadcast views often crop every baseline and sideline corner out of frame while the three-point arc stays visible; the apex is the one well-defined arc landmark (farthest point from the baseline, on the basket axis). Slightly less precise to click than a line intersection - labelers should use the rim/backboard center as the axis cue and mark v=1 when unsure."
+      },
+      {
+        "id": "center_circle_midcourt_west / center_circle_midcourt_east",
+        "rationale": "Midcourt and transition frames previously carried only the two midcourt/sideline points - too few for any downstream homography. The center circle's two intersections with the midcourt line are sharp, painted, and usually unoccluded."
+      }
+    ]
+  },
+  "orientation_rule": {
+    "north_convention": "image_left_basket",
+    "derivation": "A basketball court is symmetric, so identical-looking frames must receive identical labels for a pose model to be trainable; the canonical direction assignment must therefore be a deterministic function of image content, not of physical venue identity. Assigning north to the image-left basket achieves this. It implies the camera is canonically the west sideline: facing the court from the west sideline, north is on the left, the far sideline is east, the near sideline is west.",
+    "per_frame_capture": "Orientation is recorded data, never inferred later: each clip locks its north end once at an anchor frame (both-baskets-visible preferred, operator-declared fallback), and every saved label additionally records visible_ends (north | south | both), confirmed by the labeler on that frame and cross-checked against which points were placed."
+  },
+  "horizontal_flip_derivation": {
+    "conclusion": "fliplr flip_idx must use the north_south pairs (end swap, same side).",
+    "derivation": "With the court axis left-right in frame and north = image-left basket: mirroring the image horizontally moves the north-labeled end to image-right. Relabeling the mirrored image under the same convention makes the old south end the new north end, while the near sideline stays at the bottom of the frame (near/far do not swap), so west stays west and east stays east. Example: north_baseline_sideline_west (near-left court corner) lands at near-right after the mirror, which is south_baseline_sideline_west. The east_west pairing (used by schema v2's export) corresponds to a vertical image flip and would silently corrupt fliplr-augmented samples; training therefore pins flipud=0.0 and degrees=0.0.",
+    "verified_by": "tests/test_schema_v3.py::test_horizontal_flip_matches_convention (synthetic side-camera projection, mirrored and relabeled)"
+  },
+  "reference_geometry": {
+    "source": "court_templates/eybl.json (NFHS Rule 1: 84x50 ft, 12 ft lane, free-throw line 19 ft from baseline, three-point radius 19.75 ft centered 5.25 ft from the baseline)",
+    "diagram_mapping": "diagram_xy = court_origin_xy + units_per_foot * [feet from west sideline, feet from north baseline]; uniform 9 units/ft, court spans x 25-475 and y 92-848 in the 500x940 viewBox. Enforced by validate_schema.py."
+  }
+}

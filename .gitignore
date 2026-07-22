@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *.pt
 output_videos/
+input_videos/
+runs/
 dataset/frames/
 dataset/thumbs/
 dataset/labels/

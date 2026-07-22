@@ -1,9 +1,17 @@
-# Court keypoint sanity check
+# NextUp court keypoints
 
-A small video-only test harness for visually checking the fine-tuned basketball
-court keypoint model. It processes frames one at a time, draws each detected
-keypoint, and prints its confidence next to it. Point colors run from red
-(lower confidence) to green (higher confidence).
+Hand-labeling pipeline for basketball court keypoints (schema v3). Labeling
+conventions live in [`LABELING.md`](LABELING.md); the machine-readable schema
+is
+[`dataset/schemas/court_keypoints.v3.json`](dataset/schemas/court_keypoints.v3.json).
+Once you have some labels, [`TRAINING.md`](TRAINING.md) covers fine-tuning a
+pose model on them and reading the results.
+
+> **Superseded:** the reloc2-derived K1–K18 model and schema v2 are no longer
+> used — the model's point semantics were never confirmed. The weights and
+> schema v2 files have been removed; nothing in the v3 pipeline references
+> them. The Group A/B orientation flow from v2 is gone; orientation is now
+> declared by the labeler directly.
 
 ## Install
 
@@ -15,43 +23,15 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-The model is expected at `models/court_keypoint_detector.pt` by default.
+## Labeling pipeline
 
-## Run on any game video
+Turns raw game clips into hand-labeled canonical-court keypoints. State lives
+in `dataset/manifest.json`; each command prints progress counts. The loop:
 
-```bash
-python3 run_court_keypoint_check.py "/path/to/gym footage.mp4" \
-  --output output_videos/gym_footage_check.mp4
 ```
-
-Useful options:
-
-```text
---model PATH             use a different .pt file
---output PATH            choose the annotated video path
---conf 0.5              model detection threshold
---keypoint-conf 0.25    hide keypoints below this threshold
---device 0              use GPU 0 (omit for Ultralytics' automatic choice)
+extract_frames.py → triage (keep/skip) → anchor clip orientation
+   → label + confirm visible ends
 ```
-
-For example, the model can be run on one of several clips without changing any
-code:
-
-```bash
-python3 run_court_keypoint_check.py /videos/gym_a.mp4 --output /tmp/gym_a.mp4
-python3 run_court_keypoint_check.py /videos/gym_b.mp4 --output /tmp/gym_b.mp4
-```
-
-The output is an H.264-encoded MP4 with the original frame rate and dimensions, so
-it is compatible with standard browser video players. The top-left
-overlay shows the number of visible keypoints and their mean confidence for the
-current frame. This is intentionally a quick sanity-check tool, not a tracking
-or production pipeline.
-
-## Training-data pipeline
-
-Turns raw game clips into corrected canonical-court labels. State lives in
-`dataset/manifest.json`; each command prints progress counts.
 
 **1. Reset and extract candidate frames.** Drop clips into `input_videos/`,
 then start a new labeling run with:
@@ -73,45 +53,39 @@ python3 serve.py                     # then open http://127.0.0.1:8000
 ```
 
 - *Triage view* (per clip): click a frame to cycle pending → keep → skip, or
-  use arrows with `K`/`S`/`U`.
-- *Orientation anchor*: before the first model prefill for a clip, the app
-  draws the model’s raw detections on the frame as two neutral end groups
-  (Group A and Group B) and asks which side of the frame the Group A end is
-  on — answer from the overlay, or let the app measure the groups’ mean X
-  positions automatically. Either way it locks the identity or 180-degree
-  normalization for the clip and records it in the manifest; north is the
-  image-left basket at the anchor frame.
-- *Label view*: fresh prefill is already normalized to the fixed K1–K18 court
-  map. The static north-at-top, east-at-right diagram highlights the selected
-  point. Drag points to correct them; remove and replace points as needed;
-  `V`/right-click cycles visibility (2 visible / 1 occluded / 0 excluded).
-  Labels include schema and orientation provenance under
-  `dataset/labels/<clip>/<frame>.json`.
-- *Labeling from scratch*: unplaced points are hidden. Click a point in the
-  list, move the mouse, and click on the frame to drop it. Never-placed points
-  are saved as `(0, 0)` with visibility 0.
+  use arrows with `K`/`S`/`U`. Aim for variety, not volume — see
+  [`LABELING.md`](LABELING.md).
+- *Orientation anchor* (once per clip): north is always the image-left basket.
+  Find a frame where both baskets are discernible and lock the anchor; if no
+  frame shows both ends, declare which end the anchor frame shows instead.
+  The lock is recorded in the manifest and echoed into every saved label.
+- *Label view*: click a keypoint in the list, move the mouse, and click the
+  frame to drop it; drag to adjust. `V`/right-click toggles visible (2) /
+  occluded (1); `⌫` unlabels a point (saved as `(0, 0)` with visibility 0).
+  On every frame, confirm *visible ends* — North `1` / Both `2` / South `3` —
+  before saving; points from a non-visible end are locked out and the server
+  rejects contradictions. Labels land in `dataset/labels/<clip>/<frame>.json`
+  with schema, orientation, and visible-ends provenance.
+- *Model prefill* (optional, round 2+): `python3 serve.py --model
+  runs/pose/court_pose_v1/weights/best.pt` prefills points from your own
+  trained model; `R` re-predicts. Models whose keypoint count does not match
+  the schema are refused.
 
 Do not run `extract_frames.py` while the server is up because both write the
 manifest.
-
-**4. Export for training.**
-
-```bash
-python3 export_yolo.py               # writes export/court_pose/
-```
-
-The exporter validates every saved label against the canonical schema, writes
-a deterministic train/validation split, copies `court_keypoints.v2.json` into
-the export, and writes the east/west reflection `flip_idx` in `data.yaml`.
 
 `python3 pipeline_manifest.py` prints current counts.
 
 ## Keypoint semantics
 
-[`dataset/schemas/court_keypoints.v2.json`](dataset/schemas/court_keypoints.v2.json)
-is the authoritative K1–K18 mapping. It defines north at the top baseline and
-east at the right sideline, records the diagram markers and the two allowed
-raw-prefill permutations, and contains only trained court landmarks: baseline
-features, sideline/midcourt intersections, and free-throw-line lane corners.
-The adjacent audit records the reviewed geometry. Every saved label and export
-uses this one canonical index meaning.
+[`dataset/schemas/court_keypoints.v3.json`](dataset/schemas/court_keypoints.v3.json)
+is the authoritative mapping: 22 fixed court landmarks named by absolute
+position (north/south end, east/west side), never by camera viewpoint. It
+defines north at the top baseline and east at the right sideline, records the
+diagram markers, both mirror-pair sets (east/west and north/south), and which
+set feeds the horizontal-flip `flip_idx` — the north/south set, because under
+the image-left-basket convention a horizontal flip swaps court ends, not
+sidelines. The adjacent audit file records the derivations;
+`python3 validate_schema.py` checks the whole artifact and prints the derived
+`flip_idx`. Every saved label and export uses this one canonical index
+meaning.

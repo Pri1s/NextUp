@@ -1,0 +1,91 @@
+{
+  "schema_name": "basketball-court-keypoints",
+  "schema_version": "3.0.0",
+  "coordinate_system": "image pixels, origin at the top-left",
+  "canonical_orientation": {
+    "north_convention": "image_left_basket",
+    "rule": "North is the end whose basket lies toward image-left. When both baskets are discernible in a frame, north is the image-left basket by definition. With north at image-left, the far sideline is east and the near sideline is west.",
+    "clip_anchor": "Each clip locks the physical identity of its north end once, at an anchor frame, before any labeling. Every frame of the clip inherits that assignment; single-end frames are labeled with the end the locked anchor implies, confirmed per frame via visible_ends.",
+    "assumptions": [
+      "the camera stays on one sideline within a clip",
+      "the court's basket-to-basket axis runs roughly left-right in the image; frames violating this are skipped at triage"
+    ]
+  },
+  "visibility_values": {
+    "0": "not labeled",
+    "1": "labeled, occluded",
+    "2": "labeled, visible"
+  },
+  "visible_ends_values": ["north", "south", "both"],
+  "reference_diagram": {
+    "asset": "web/static/court-keypoints-reference.v3.svg",
+    "asset_url": "/static/court-keypoints-reference.v3.svg",
+    "view_box": [0, 0, 500, 940],
+    "marker_group_id_format": "kpt-{index}",
+    "north_at_top": true,
+    "east_at_right": true,
+    "units_per_foot": 9,
+    "court_origin_xy": [25, 92]
+  },
+  "reference_court": {
+    "template": "court_templates/eybl.json",
+    "units": "feet",
+    "length": 84.0,
+    "width": 50.0,
+    "note": "court_xy_ft values are the NFHS 84x50 reference geometry (EYBL footage). The normative definition of each keypoint is its feature description; exact distances (three-point radius, lane width) vary by rule set, the named intersections and apexes do not. court_xy_ft is [feet from the north baseline, feet from the west sideline]."
+  },
+  "mirror_pairs": {
+    "description": "Pairs are stored by keypoint id, never by index. east_west pairs reflect across the court's long (basket-to-basket) axis: same end, side swapped; side=center points are on the axis and self-map. north_south pairs reflect across the midcourt line: same side, end swapped; end=mid points are on the line and self-map.",
+    "east_west": [
+      ["north_baseline_sideline_east", "north_baseline_sideline_west"],
+      ["north_three_point_baseline_east", "north_three_point_baseline_west"],
+      ["north_lane_baseline_east", "north_lane_baseline_west"],
+      ["north_lane_free_throw_east", "north_lane_free_throw_west"],
+      ["midcourt_sideline_east", "midcourt_sideline_west"],
+      ["center_circle_midcourt_east", "center_circle_midcourt_west"],
+      ["south_baseline_sideline_east", "south_baseline_sideline_west"],
+      ["south_three_point_baseline_east", "south_three_point_baseline_west"],
+      ["south_lane_baseline_east", "south_lane_baseline_west"],
+      ["south_lane_free_throw_east", "south_lane_free_throw_west"]
+    ],
+    "north_south": [
+      ["north_baseline_sideline_east", "south_baseline_sideline_east"],
+      ["north_baseline_sideline_west", "south_baseline_sideline_west"],
+      ["north_three_point_baseline_east", "south_three_point_baseline_east"],
+      ["north_three_point_baseline_west", "south_three_point_baseline_west"],
+      ["north_lane_baseline_east", "south_lane_baseline_east"],
+      ["north_lane_baseline_west", "south_lane_baseline_west"],
+      ["north_lane_free_throw_east", "south_lane_free_throw_east"],
+      ["north_lane_free_throw_west", "south_lane_free_throw_west"],
+      ["north_three_point_apex", "south_three_point_apex"]
+    ]
+  },
+  "horizontal_flip": {
+    "uses": "north_south",
+    "rationale": "Under the image_left_basket convention the camera is canonically the west sideline: near sideline = west, far = east, image-left end = north. Mirroring the image horizontally swaps which end is image-left (ends swap) but does not swap near and far sidelines (east/west preserved), so YOLO fliplr augmentation must remap keypoints with the north_south pairs. The east_west pairs would only be correct for a vertical flip, which training keeps disabled. See court_keypoints.v3.audit.json for the derivation."
+  },
+  "keypoints": [
+    {"index": 1, "id": "north_baseline_sideline_east", "feature": "North baseline / east-sideline corner", "end": "north", "side": "east", "court_position": "north-east", "court_xy_ft": [0.0, 50.0], "diagram_xy": [475, 92]},
+    {"index": 2, "id": "north_three_point_baseline_east", "feature": "North three-point line / baseline junction", "end": "north", "side": "east", "court_position": "north-east", "court_xy_ft": [0.0, 44.75], "diagram_xy": [427.75, 92]},
+    {"index": 3, "id": "north_lane_baseline_east", "feature": "North lane / baseline corner", "end": "north", "side": "east", "court_position": "north-east", "court_xy_ft": [0.0, 31.0], "diagram_xy": [304, 92]},
+    {"index": 4, "id": "north_lane_baseline_west", "feature": "North lane / baseline corner", "end": "north", "side": "west", "court_position": "north-west", "court_xy_ft": [0.0, 19.0], "diagram_xy": [196, 92]},
+    {"index": 5, "id": "north_three_point_baseline_west", "feature": "North three-point line / baseline junction", "end": "north", "side": "west", "court_position": "north-west", "court_xy_ft": [0.0, 5.25], "diagram_xy": [72.25, 92]},
+    {"index": 6, "id": "north_baseline_sideline_west", "feature": "North baseline / west-sideline corner", "end": "north", "side": "west", "court_position": "north-west", "court_xy_ft": [0.0, 0.0], "diagram_xy": [25, 92]},
+    {"index": 7, "id": "north_lane_free_throw_east", "feature": "North lane / free-throw-line corner", "end": "north", "side": "east", "court_position": "north-east", "court_xy_ft": [19.0, 31.0], "diagram_xy": [304, 263]},
+    {"index": 8, "id": "north_lane_free_throw_west", "feature": "North lane / free-throw-line corner", "end": "north", "side": "west", "court_position": "north-west", "court_xy_ft": [19.0, 19.0], "diagram_xy": [196, 263]},
+    {"index": 9, "id": "north_three_point_apex", "feature": "Apex of the north three-point arc (farthest point from the north baseline, on the basket axis)", "end": "north", "side": "center", "court_position": "north-center", "court_xy_ft": [25.0, 25.0], "diagram_xy": [250, 317]},
+    {"index": 10, "id": "midcourt_sideline_west", "feature": "West sideline / midcourt-line intersection", "end": "mid", "side": "west", "court_position": "midcourt-west", "court_xy_ft": [42.0, 0.0], "diagram_xy": [25, 470]},
+    {"index": 11, "id": "midcourt_sideline_east", "feature": "East sideline / midcourt-line intersection", "end": "mid", "side": "east", "court_position": "midcourt-east", "court_xy_ft": [42.0, 50.0], "diagram_xy": [475, 470]},
+    {"index": 12, "id": "center_circle_midcourt_west", "feature": "Center circle / midcourt-line intersection, west side", "end": "mid", "side": "west", "court_position": "midcourt-west", "court_xy_ft": [42.0, 19.0], "diagram_xy": [196, 470]},
+    {"index": 13, "id": "center_circle_midcourt_east", "feature": "Center circle / midcourt-line intersection, east side", "end": "mid", "side": "east", "court_position": "midcourt-east", "court_xy_ft": [42.0, 31.0], "diagram_xy": [304, 470]},
+    {"index": 14, "id": "south_baseline_sideline_west", "feature": "South baseline / west-sideline corner", "end": "south", "side": "west", "court_position": "south-west", "court_xy_ft": [84.0, 0.0], "diagram_xy": [25, 848]},
+    {"index": 15, "id": "south_three_point_baseline_west", "feature": "South three-point line / baseline junction", "end": "south", "side": "west", "court_position": "south-west", "court_xy_ft": [84.0, 5.25], "diagram_xy": [72.25, 848]},
+    {"index": 16, "id": "south_lane_baseline_west", "feature": "South lane / baseline corner", "end": "south", "side": "west", "court_position": "south-west", "court_xy_ft": [84.0, 19.0], "diagram_xy": [196, 848]},
+    {"index": 17, "id": "south_lane_baseline_east", "feature": "South lane / baseline corner", "end": "south", "side": "east", "court_position": "south-east", "court_xy_ft": [84.0, 31.0], "diagram_xy": [304, 848]},
+    {"index": 18, "id": "south_three_point_baseline_east", "feature": "South three-point line / baseline junction", "end": "south", "side": "east", "court_position": "south-east", "court_xy_ft": [84.0, 44.75], "diagram_xy": [427.75, 848]},
+    {"index": 19, "id": "south_baseline_sideline_east", "feature": "South baseline / east-sideline corner", "end": "south", "side": "east", "court_position": "south-east", "court_xy_ft": [84.0, 50.0], "diagram_xy": [475, 848]},
+    {"index": 20, "id": "south_lane_free_throw_west", "feature": "South lane / free-throw-line corner", "end": "south", "side": "west", "court_position": "south-west", "court_xy_ft": [65.0, 19.0], "diagram_xy": [196, 677]},
+    {"index": 21, "id": "south_lane_free_throw_east", "feature": "South lane / free-throw-line corner", "end": "south", "side": "east", "court_position": "south-east", "court_xy_ft": [65.0, 31.0], "diagram_xy": [304, 677]},
+    {"index": 22, "id": "south_three_point_apex", "feature": "Apex of the south three-point arc (farthest point from the south baseline, on the basket axis)", "end": "south", "side": "center", "court_position": "south-center", "court_xy_ft": [59.0, 25.0], "diagram_xy": [250, 623]}
+  ]
+}

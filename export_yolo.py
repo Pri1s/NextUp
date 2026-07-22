@@ -1,10 +1,12 @@
-"""Export corrected keypoint labels to an Ultralytics YOLO pose dataset.
+"""Export hand-labeled keypoints to an Ultralytics YOLO pose dataset.
 
 Takes every frame with a saved label under dataset/labels/ and writes an
 images/ + labels/ tree with normalized pose annotations plus a data.yaml,
 ready for `yolo pose train`. Re-running regenerates the export from scratch;
 the train/val split is deterministic per frame so it stays stable as the
-dataset grows.
+dataset grows. flip_idx is derived from the schema (via
+validate_schema.flip_idx_from_schema) so it can never drift from the
+canonical mirror pairs.
 """
 
 from __future__ import annotations
@@ -16,11 +18,10 @@ import shutil
 from pathlib import Path
 
 from pipeline_manifest import DEFAULT_DATASET_DIR, PROJECT_DIR, load_manifest
+from validate_schema import flip_idx_from_schema, load_schema
 
 DEFAULT_OUT = PROJECT_DIR / "export" / "court_pose"
-DEFAULT_SCHEMA = PROJECT_DIR / "dataset" / "schemas" / "court_keypoints.v2.json"
-# Reflection across the north/south axis swaps east and west fixed locations.
-EAST_WEST_FLIP_IDX = [5, 4, 3, 2, 1, 0, 7, 6, 9, 8, 15, 14, 13, 12, 11, 10, 17, 16]
+DEFAULT_SCHEMA = PROJECT_DIR / "dataset" / "schemas" / "court_keypoints.v3.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -86,11 +87,10 @@ def main() -> None:
     args = parse_args()
     if not args.schema.is_file():
         raise SystemExit(f"Canonical keypoint schema not found: {args.schema}")
-    with open(args.schema, "r", encoding="utf-8") as handle:
-        schema = json.load(handle)
+    schema = load_schema(args.schema)
     expected_keypoints = len(schema.get("keypoints", []))
-    if expected_keypoints != 18:
-        raise SystemExit(f"Canonical schema must define 18 keypoints, found {expected_keypoints}")
+    flip_idx = flip_idx_from_schema(schema)
+
     manifest = load_manifest(args.dataset)
 
     labeled = [
@@ -107,7 +107,6 @@ def main() -> None:
         (args.out / "images" / split).mkdir(parents=True, exist_ok=True)
         (args.out / "labels" / split).mkdir(parents=True, exist_ok=True)
 
-    num_keypoints = None
     split_counts = {"train": 0, "val": 0}
     for frame_id, frame in labeled:
         label_file = args.dataset / "labels" / frame["clip_id"] / f"{frame_id}.json"
@@ -132,8 +131,6 @@ def main() -> None:
             raise SystemExit(
                 f"{frame_id} has {len(keypoints)} keypoints, expected {expected_keypoints}"
             )
-        if num_keypoints is None:
-            num_keypoints = len(keypoints)
 
         parts = ["0", bbox_line(keypoints, width, height, args.bbox)]
         for point in keypoints:
@@ -158,8 +155,8 @@ def main() -> None:
         f"path: {args.out.resolve()}\n"
         f"train: images/train\n"
         f"val: images/val\n"
-        f"kpt_shape: [{num_keypoints}, 3]\n"
-        f"flip_idx: {EAST_WEST_FLIP_IDX}\n"
+        f"kpt_shape: [{expected_keypoints}, 3]\n"
+        f"flip_idx: {flip_idx}\n"
         f"names:\n  0: court\n"
     )
     with open(args.out / "data.yaml", "w", encoding="utf-8") as handle:
@@ -167,7 +164,7 @@ def main() -> None:
 
     print(
         f"Exported {split_counts['train']} train + {split_counts['val']} val "
-        f"frames ({num_keypoints} keypoints each) to {args.out}"
+        f"frames ({expected_keypoints} keypoints each) to {args.out}"
     )
 
 

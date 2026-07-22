@@ -1,13 +1,17 @@
-"""Local web app for triaging candidate frames and correcting court keypoints.
+"""Local web app for triaging candidate frames and hand-labeling court keypoints.
 
 Serves two views over the shared manifest:
   - /triage/<clip_id>: thumbnail grid, mark frames keep/skip
-  - /label/<clip_id>:  canvas editor to correct model-predicted keypoints on
-                       kept frames; corrections saved as per-frame JSON under
+  - /label/<clip_id>:  canvas editor to place canonical court keypoints on
+                       kept frames; labels saved as per-frame JSON under
                        dataset/labels/
 
-The YOLO pose model is loaded lazily on the first prediction request. Do not
-run extract_frames.py while this server is up — both write the manifest.
+Labeling is manual by default. --model optionally points at a pose model
+trained on THIS schema (a court_pose training run) to prefill points; models
+with a different keypoint count are refused at startup. The legacy reloc2
+court model is not schema-compatible and cannot be used here.
+
+Do not run extract_frames.py while this server is up — both write the manifest.
 """
 
 from __future__ import annotations
@@ -29,23 +33,25 @@ from pipeline_manifest import (
     save_manifest,
 )
 
-DEFAULT_MODEL = PROJECT_DIR / "models" / "court_keypoint_detector.pt"
 WEB_DIR = PROJECT_DIR / "web"
-KEYPOINT_SCHEMA_PATH = PROJECT_DIR / "dataset" / "schemas" / "court_keypoints.v2.json"
-ORIENTATION_MIN_POINTS_PER_END = 2
-ORIENTATION_MIN_X_SEPARATION_FRACTION = 0.03
+KEYPOINT_SCHEMA_PATH = PROJECT_DIR / "dataset" / "schemas" / "court_keypoints.v3.json"
 NORTH_CONVENTION = "image_left_basket"
+SCHEMA_VERSION_PREFIX = "3."
+ORIENTATION_MODES = ("both_ends_visible", "declared")
+# Inference settings for optional prefill from a model trained on this schema.
+PREDICT_CONF = 0.25
+PREDICT_KEYPOINT_CONF = 0.25
+PREDICT_IMGSZ = 960
 
 
-def load_keypoint_schema() -> dict:
-    if not KEYPOINT_SCHEMA_PATH.is_file():
-        raise FileNotFoundError(f"Keypoint schema not found: {KEYPOINT_SCHEMA_PATH}")
-    with open(KEYPOINT_SCHEMA_PATH, "r", encoding="utf-8") as handle:
+def load_keypoint_schema(path: Path = KEYPOINT_SCHEMA_PATH) -> dict:
+    if not path.is_file():
+        raise FileNotFoundError(f"Keypoint schema not found: {path}")
+    with open(path, "r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
-def schema_provenance() -> dict:
-    schema = load_keypoint_schema()
+def schema_provenance(schema: dict) -> dict:
     return {
         "schema_name": schema["schema_name"],
         "schema_version": schema["schema_version"],
@@ -53,446 +59,444 @@ def schema_provenance() -> dict:
 
 
 def clip_orientation(clip: dict) -> dict | None:
-    """Return only orientation metadata compatible with the current anchor axis."""
+    """Return only orientation metadata recorded under the current schema."""
     orientation = clip.get("orientation")
     if not isinstance(orientation, dict):
         return None
-    # Image-top anchors belonged to the superseded schema and must be re-anchored.
-    return orientation if orientation.get("north_convention") == NORTH_CONVENTION else None
-
-
-def normalize_keypoints(points: list[dict], permutation_name: str) -> list[dict]:
-    """Return raw prediction points in the fixed canonical index order."""
-    schema = load_keypoint_schema()
-    permutation = schema["normalization"].get(permutation_name)
-    expected = len(schema["keypoints"])
-    if not isinstance(permutation, list) or len(permutation) != expected:
-        raise ValueError(f"Unknown or invalid normalization: {permutation_name}")
-    if len(points) != expected:
-        raise ValueError(
-            f"Model returned {len(points)} keypoints; canonical schema requires {expected}"
-        )
-    return [dict(points[raw_index]) for raw_index in permutation]
-
-
-def infer_orientation(points: list[dict], image_width: int) -> tuple[str | None, dict]:
-    """Infer the raw model end relation from the anchor image's X positions."""
-    schema = load_keypoint_schema()
-    groups = schema["normalization"]["raw_end_groups"]
-
-    def mean_x(indices: list[int]) -> tuple[float | None, int]:
-        located = [
-            points[index]["x"]
-            for index in indices
-            if index < len(points)
-            and points[index].get("v", 0) > 0
-            and not (points[index].get("x") == 0 and points[index].get("y") == 0)
-        ]
-        return (sum(located) / len(located), len(located)) if located else (None, 0)
-
-    first_x, first_count = mean_x(groups["first"])
-    second_x, second_count = mean_x(groups["second"])
-    evidence = {
-        "first_end_mean_x": round(first_x, 2) if first_x is not None else None,
-        "first_end_points": first_count,
-        "second_end_mean_x": round(second_x, 2) if second_x is not None else None,
-        "second_end_points": second_count,
-    }
-    if first_count < ORIENTATION_MIN_POINTS_PER_END or second_count < ORIENTATION_MIN_POINTS_PER_END:
-        evidence["reason"] = "both end groups (A and B) need at least two located points"
-        return None, evidence
-    if abs(first_x - second_x) < max(12.0, image_width * ORIENTATION_MIN_X_SEPARATION_FRACTION):
-        evidence["reason"] = "Group A and Group B mean X positions are too close to anchor reliably"
-        return None, evidence
-    # Footage uses a left/right court axis: north is the image-left basket.
-    if first_x < second_x:
-        return "identity", evidence
-    return "rotate_180", evidence
+    if orientation.get("north_convention") != NORTH_CONVENTION:
+        return None
+    # v2 anchors share the convention string but carried raw-model metadata;
+    # anything not recorded under a 3.x schema must be re-anchored.
+    if not str(orientation.get("schema_version", "")).startswith(SCHEMA_VERSION_PREFIX):
+        return None
+    return orientation
 
 
 def orientation_for_response(orientation: dict | None) -> dict | None:
     if orientation is None:
         return None
-    return {
+    response = {
         "anchor_frame_id": orientation["anchor_frame_id"],
         "north_convention": orientation["north_convention"],
-        "raw_first_end_relation": orientation["raw_first_end_relation"],
-        "prefill_normalization": orientation["prefill_normalization"],
         "method": orientation["method"],
+        "schema_version": orientation["schema_version"],
     }
-
-app = Flask(__name__, static_folder=str(WEB_DIR / "static"))
-
-state: dict = {}
-state_lock = Lock()
-model_cache: dict = {}
+    if orientation.get("declared_end"):
+        response["declared_end"] = orientation["declared_end"]
+    return response
 
 
-def get_model():
-    """Load the YOLO pose model once, on first use."""
-    with state_lock:
-        if "model" not in model_cache:
-            from ultralytics import YOLO
+def load_trained_frames(model_path: Path) -> dict[str, str]:
+    """frame_id -> 'train'/'val' for the run that produced model_path's weights.
 
-            model_path = state["model_path"]
-            if not model_path.is_file():
-                raise FileNotFoundError(f"Model not found: {model_path}")
-            model = YOLO(str(model_path))
-            kpt_shape = getattr(model.model, "kpt_shape", None)
-            model_cache["model"] = model
-            model_cache["num_keypoints"] = int(kpt_shape[0]) if kpt_shape else None
-        return model_cache["model"]
+    Looks for dataset_manifest.json (written by train_pose.py) next to the
+    run directory, e.g. runs/pose/court_pose_v1/weights/best.pt ->
+    runs/pose/court_pose_v1/dataset_manifest.json. Missing manifest (older
+    run, or a checkpoint not produced by train_pose.py) just means no frames
+    are flagged as trained-on.
+    """
+    manifest_path = Path(model_path).resolve().parent.parent / "dataset_manifest.json"
+    if not manifest_path.is_file():
+        return {}
+    with open(manifest_path, "r", encoding="utf-8") as handle:
+        return json.load(handle).get("frames", {})
 
 
-def predict_keypoints(image_path: Path) -> list[dict]:
-    """Run the model on one image and return keypoints for the best instance."""
-    model = get_model()
-    predict_kwargs = {
-        "conf": state["conf"],
-        "imgsz": state["imgsz"],
-        "verbose": False,
+def empty_points(count: int) -> list[dict]:
+    return [{"x": 0.0, "y": 0.0, "v": 0, "src_conf": 0.0} for _ in range(count)]
+
+
+def ends_conflicts(schema: dict, keypoints: list[dict], visible_ends: str) -> list[str]:
+    """Ids of placed points that belong to an end declared not visible."""
+    if visible_ends == "both":
+        return []
+    return [
+        definition["id"]
+        for definition, point in zip(schema["keypoints"], keypoints)
+        if point["v"] > 0
+        and definition["end"] in ("north", "south")
+        and definition["end"] != visible_ends
+    ]
+
+
+def build_app(
+    dataset_dir: Path,
+    model_path: Path | None = None,
+    schema_path: Path = KEYPOINT_SCHEMA_PATH,
+) -> Flask:
+    app = Flask(__name__, static_folder=str(WEB_DIR / "static"))
+    schema_expected = len(load_keypoint_schema(schema_path)["keypoints"])
+
+    state = {
+        "dataset_dir": Path(dataset_dir),
+        "manifest": load_manifest(Path(dataset_dir)),
+        "model": None,
+        "trained_frames": {},
     }
-    if state["device"] is not None:
-        predict_kwargs["device"] = state["device"]
-    result = model.predict(str(image_path), **predict_kwargs)[0]
+    state_lock = Lock()
 
-    keypoints = getattr(result, "keypoints", None)
-    xy_tensor = getattr(keypoints, "xy", None)
-    if xy_tensor is None or len(xy_tensor) == 0:
-        num = model_cache.get("num_keypoints") or 0
-        return [{"x": 0.0, "y": 0.0, "v": 0, "src_conf": 0.0} for _ in range(num)]
+    if model_path is not None:
+        from ultralytics import YOLO
 
-    xy = xy_tensor.cpu().numpy()
-    conf = getattr(keypoints, "conf", None)
-    conf = conf.cpu().numpy() if conf is not None else None
-    box_conf = getattr(getattr(result, "boxes", None), "conf", None)
+        if not Path(model_path).is_file():
+            raise SystemExit(f"Prefill model not found: {model_path}")
+        model = YOLO(str(model_path))
+        kpt_shape = getattr(model.model, "kpt_shape", None)
+        if not kpt_shape or int(kpt_shape[0]) != schema_expected:
+            raise SystemExit(
+                f"Prefill model has kpt_shape {kpt_shape}; the schema requires "
+                f"{schema_expected} keypoints. Only models trained on this schema can prefill."
+            )
+        state["model"] = model
+        state["trained_frames"] = load_trained_frames(model_path)
 
-    # Multiple detected instances: keep the one with the highest box confidence.
-    instance = 0
-    if box_conf is not None and len(box_conf) > 1:
-        instance = int(box_conf.cpu().numpy().argmax())
+    def get_schema() -> dict:
+        return load_keypoint_schema(schema_path)
 
-    if model_cache.get("num_keypoints") is None:
-        model_cache["num_keypoints"] = int(xy.shape[1])
+    def predict_keypoints(image_path: Path) -> list[dict]:
+        """Run the prefill model on one image; keypoints arrive canonical."""
+        result = state["model"].predict(
+            str(image_path), conf=PREDICT_CONF, imgsz=PREDICT_IMGSZ, verbose=False
+        )[0]
+        keypoints = getattr(result, "keypoints", None)
+        xy_tensor = getattr(keypoints, "xy", None)
+        if xy_tensor is None or len(xy_tensor) == 0:
+            return empty_points(schema_expected)
 
-    points = []
-    for i, (x, y) in enumerate(xy[instance]):
-        point_conf = float(conf[instance][i]) if conf is not None else 1.0
-        # Points the model could not place land at (0,0) with ~0 confidence.
-        visible = 2 if point_conf >= state["keypoint_conf"] else 0
-        points.append(
-            {
-                "x": round(float(x), 2),
-                "y": round(float(y), 2),
-                "v": visible,
-                "src_conf": round(point_conf, 4),
-            }
-        )
-    return points
+        xy = xy_tensor.cpu().numpy()
+        conf = getattr(keypoints, "conf", None)
+        conf = conf.cpu().numpy() if conf is not None else None
+        box_conf = getattr(getattr(result, "boxes", None), "conf", None)
 
+        # Multiple detected instances: keep the one with the highest box confidence.
+        instance = 0
+        if box_conf is not None and len(box_conf) > 1:
+            instance = int(box_conf.cpu().numpy().argmax())
 
-def label_path(frame_id: str) -> Path:
-    frame = state["manifest"]["frames"].get(frame_id)
-    if frame is None:
-        abort(404, f"Unknown frame: {frame_id}")
-    return state["dataset_dir"] / "labels" / frame["clip_id"] / f"{frame_id}.json"
+        points = []
+        for i, (x, y) in enumerate(xy[instance]):
+            point_conf = float(conf[instance][i]) if conf is not None else 1.0
+            visible = 2 if point_conf >= PREDICT_KEYPOINT_CONF else 0
+            points.append(
+                {
+                    "x": round(float(x), 2) if visible else 0.0,
+                    "y": round(float(y), 2) if visible else 0.0,
+                    "v": visible,
+                    "src_conf": round(point_conf, 4) if visible else 0.0,
+                }
+            )
+        return points
 
-
-def page(name: str):
-    return send_from_directory(WEB_DIR, name)
-
-
-@app.get("/")
-def index():
-    return page("index.html")
-
-
-@app.get("/triage/<clip_id>")
-def triage_page(clip_id: str):
-    if clip_id not in state["manifest"]["clips"]:
-        abort(404, f"Unknown clip: {clip_id}")
-    return page("triage.html")
-
-
-@app.get("/label")
-@app.get("/label/<clip_id>")
-def label_page(clip_id: str | None = None):
-    if clip_id is not None and clip_id not in state["manifest"]["clips"]:
-        abort(404, f"Unknown clip: {clip_id}")
-    return page("label.html")
-
-
-@app.get("/api/clips")
-def api_clips():
-    manifest = state["manifest"]
-    clips = []
-    for clip_id in sorted(manifest["clips"]):
-        entry = dict(manifest["clips"][clip_id])
-        entry["clip_id"] = clip_id
-        entry["counts"] = counts(manifest, clip_id=clip_id)
-        clips.append(entry)
-    return jsonify({"clips": clips, "counts": counts(manifest)})
-
-
-@app.get("/api/keypoint-schema")
-def api_keypoint_schema():
-    """Return the versioned feature semantics used by the labeling UI."""
-    try:
-        return jsonify(load_keypoint_schema())
-    except FileNotFoundError as error:
-        abort(500, str(error))
-
-
-@app.get("/api/clip/<clip_id>/orientation")
-def api_get_orientation(clip_id: str):
-    clip = state["manifest"]["clips"].get(clip_id)
-    if clip is None:
-        abort(404, f"Unknown clip: {clip_id}")
-    return jsonify({"clip_id": clip_id, "orientation": orientation_for_response(clip_orientation(clip))})
-
-
-@app.post("/api/clip/<clip_id>/orientation")
-def api_set_orientation(clip_id: str):
-    """Lock the one-time canonical orientation before exposing clip prefill."""
-    body = request.get_json(force=True)
-    frame_id = body.get("frame_id")
-    relation = body.get("raw_first_end_relation", "auto")
-    if relation not in {"auto", "left", "right"}:
-        abort(400, "raw_first_end_relation must be auto, left, or right")
-
-    with state_lock:
-        clip = state["manifest"]["clips"].get(clip_id)
+    def label_path(frame_id: str) -> Path:
         frame = state["manifest"]["frames"].get(frame_id)
+        if frame is None:
+            abort(404, f"Unknown frame: {frame_id}")
+        return state["dataset_dir"] / "labels" / frame["clip_id"] / f"{frame_id}.json"
+
+    def page(name: str):
+        return send_from_directory(WEB_DIR, name)
+
+    @app.get("/")
+    def index():
+        return page("index.html")
+
+    @app.get("/triage/<clip_id>")
+    def triage_page(clip_id: str):
+        if clip_id not in state["manifest"]["clips"]:
+            abort(404, f"Unknown clip: {clip_id}")
+        return page("triage.html")
+
+    @app.get("/label")
+    @app.get("/label/<clip_id>")
+    def label_page(clip_id: str | None = None):
+        if clip_id is not None and clip_id not in state["manifest"]["clips"]:
+            abort(404, f"Unknown clip: {clip_id}")
+        return page("label.html")
+
+    @app.get("/api/clips")
+    def api_clips():
+        manifest = state["manifest"]
+        clips = []
+        for clip_id in sorted(manifest["clips"]):
+            entry = dict(manifest["clips"][clip_id])
+            entry["clip_id"] = clip_id
+            entry["counts"] = counts(manifest, clip_id=clip_id)
+            clips.append(entry)
+        return jsonify({"clips": clips, "counts": counts(manifest)})
+
+    @app.get("/api/keypoint-schema")
+    def api_keypoint_schema():
+        """Return the versioned feature semantics used by the labeling UI."""
+        try:
+            return jsonify(get_schema())
+        except FileNotFoundError as error:
+            abort(500, str(error))
+
+    @app.get("/api/clip/<clip_id>/orientation")
+    def api_get_orientation(clip_id: str):
+        clip = state["manifest"]["clips"].get(clip_id)
         if clip is None:
             abort(404, f"Unknown clip: {clip_id}")
-        if frame is None or frame.get("clip_id") != clip_id:
-            abort(400, "anchor frame must belong to this clip")
-        existing = clip_orientation(clip)
-        if existing is not None:
-            return jsonify({
-                "clip_id": clip_id,
-                "orientation": orientation_for_response(existing),
-                "already_locked": True,
-            })
+        return jsonify(
+            {"clip_id": clip_id, "orientation": orientation_for_response(clip_orientation(clip))}
+        )
 
-    if relation == "auto":
-        raw_points = predict_keypoints(state["dataset_dir"] / frame["image"])
-        normalization, evidence = infer_orientation(raw_points, clip["width"])
-        if normalization is None:
-            return jsonify({
-                "error": "Could not infer a reliable orientation from this anchor frame.",
-                "evidence": evidence,
-                "requires_manual_relation": True,
-            }), 422
-        raw_first_end_relation = "left" if normalization == "identity" else "right"
-        method = "raw_end_group_mean_x"
-    else:
-        normalization = "identity" if relation == "left" else "rotate_180"
-        raw_first_end_relation = relation
-        evidence = {"reason": "operator-selected raw first-end relation"}
-        method = "operator_selected"
+    @app.post("/api/clip/<clip_id>/orientation")
+    def api_set_orientation(clip_id: str):
+        """Lock the one-time north-end anchor before exposing labeling."""
+        body = request.get_json(force=True)
+        frame_id = body.get("frame_id")
+        mode = body.get("mode")
+        if mode not in ORIENTATION_MODES:
+            abort(400, f"mode must be one of {ORIENTATION_MODES}")
+        declared_end = body.get("declared_end")
+        if mode == "declared":
+            if declared_end not in ("north", "south"):
+                abort(400, "declared_end must be north or south")
+        else:
+            declared_end = None
 
-    orientation = {
-        "anchor_frame_id": frame_id,
-        "north_convention": NORTH_CONVENTION,
-        "raw_first_end_relation": raw_first_end_relation,
-        "prefill_normalization": normalization,
-        "method": method,
-        "evidence": evidence,
-        "locked_at": datetime.now().isoformat(timespec="seconds"),
-    }
-    with state_lock:
-        # Another request may have locked it while model inference was running.
-        clip = state["manifest"]["clips"][clip_id]
-        existing = clip_orientation(clip)
-        if existing is None:
+        schema = get_schema()
+        with state_lock:
+            clip = state["manifest"]["clips"].get(clip_id)
+            frame = state["manifest"]["frames"].get(frame_id)
+            if clip is None:
+                abort(404, f"Unknown clip: {clip_id}")
+            if frame is None or frame.get("clip_id") != clip_id:
+                abort(400, "anchor frame must belong to this clip")
+            existing = clip_orientation(clip)
+            if existing is not None:
+                return jsonify({
+                    "clip_id": clip_id,
+                    "orientation": orientation_for_response(existing),
+                    "already_locked": True,
+                })
+            orientation = {
+                "schema_version": schema["schema_version"],
+                "north_convention": NORTH_CONVENTION,
+                "anchor_frame_id": frame_id,
+                "method": (
+                    "anchor_both_ends_image_left"
+                    if mode == "both_ends_visible"
+                    else "operator_declared_single_end"
+                ),
+                "locked_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            if declared_end:
+                orientation["declared_end"] = declared_end
             clip["orientation"] = orientation
             save_manifest(state["dataset_dir"], state["manifest"])
-        else:
-            orientation = existing
-    return jsonify({
-        "clip_id": clip_id,
-        "orientation": orientation_for_response(orientation),
-        "already_locked": existing is not None,
-    })
-
-
-@app.get("/api/frame/<frame_id>/raw-prediction")
-def api_raw_prediction(frame_id: str):
-    """Raw, un-normalized model points for the pre-orientation group preview.
-
-    Available before the clip orientation is locked, unlike /api/label, so the
-    labeler can see the two raw end groups while answering the orientation
-    question. Never persisted; canonical labels always go through /api/label.
-    """
-    frame = state["manifest"]["frames"].get(frame_id)
-    if frame is None:
-        abort(404, f"Unknown frame: {frame_id}")
-    schema = load_keypoint_schema()
-    points = predict_keypoints(state["dataset_dir"] / frame["image"])
-    return jsonify({
-        "frame_id": frame_id,
-        "points": points,
-        "raw_end_groups": schema["normalization"]["raw_end_groups"],
-        "schema": schema_provenance(),
-    })
-
-
-@app.get("/api/frames")
-def api_frames():
-    manifest = state["manifest"]
-    clip_id = request.args.get("clip")
-    triage = request.args.get("triage")
-    frames = []
-    for frame_id in sorted(manifest["frames"]):
-        frame = manifest["frames"][frame_id]
-        if clip_id and frame["clip_id"] != clip_id:
-            continue
-        if triage and frame.get("triage", "pending") != triage:
-            continue
-        frames.append({"frame_id": frame_id, **frame})
-    return jsonify(
-        {"frames": frames, "counts": counts(manifest, clip_id=clip_id)}
-    )
-
-
-@app.post("/api/triage")
-def api_triage():
-    body = request.get_json(force=True)
-    frame_id = body.get("frame_id")
-    status = body.get("status")
-    if status not in TRIAGE_STATES:
-        abort(400, f"status must be one of {TRIAGE_STATES}")
-    with state_lock:
-        frame = state["manifest"]["frames"].get(frame_id)
-        if frame is None:
-            abort(404, f"Unknown frame: {frame_id}")
-        frame["triage"] = status
-        save_manifest(state["dataset_dir"], state["manifest"])
-        clip_counts = counts(state["manifest"], clip_id=frame["clip_id"])
-        total_counts = counts(state["manifest"])
-    return jsonify({"frame_id": frame_id, "status": status,
-                    "clip_counts": clip_counts, "counts": total_counts})
-
-
-@app.post("/api/clip/<clip_id>/done")
-def api_clip_done(clip_id: str):
-    body = request.get_json(force=True)
-    with state_lock:
-        clip = state["manifest"]["clips"].get(clip_id)
-        if clip is None:
-            abort(404, f"Unknown clip: {clip_id}")
-        clip["done"] = bool(body.get("done"))
-        save_manifest(state["dataset_dir"], state["manifest"])
-    return jsonify({"clip_id": clip_id, "done": clip["done"]})
-
-
-@app.get("/api/label/<frame_id>")
-def api_get_label(frame_id: str):
-    frame = state["manifest"]["frames"].get(frame_id)
-    if frame is None:
-        abort(404, f"Unknown frame: {frame_id}")
-    clip = state["manifest"]["clips"][frame["clip_id"]]
-    orientation = clip_orientation(clip)
-    if orientation is None:
         return jsonify({
-            "error": "Set the clip orientation anchor before requesting prefill.",
-            "orientation_required": True,
-            "schema": schema_provenance(),
-        }), 409
-
-    path = label_path(frame_id)
-    force_predict = request.args.get("predict") == "1"
-    if path.is_file() and not force_predict:
-        with open(path, "r", encoding="utf-8") as handle:
-            label = json.load(handle)
-        return jsonify({
-            "source": "saved",
-            "label": label,
-            "num_keypoints": len(label.get("keypoints", [])),
+            "clip_id": clip_id,
             "orientation": orientation_for_response(orientation),
-            "schema": schema_provenance(),
+            "already_locked": False,
         })
 
-    raw_points = predict_keypoints(state["dataset_dir"] / frame["image"])
-    try:
-        points = normalize_keypoints(raw_points, orientation["prefill_normalization"])
-    except ValueError as error:
-        abort(500, str(error))
-    label = {
-        "frame_id": frame_id,
-        "image_w": clip["width"],
-        "image_h": clip["height"],
-        "num_keypoints": len(points),
-        "keypoints": points,
-    }
-    return jsonify({
-        "source": "predicted",
-        "label": label,
-        "num_keypoints": len(points),
-        "orientation": orientation_for_response(orientation),
-        "schema": schema_provenance(),
-    })
+    @app.delete("/api/clip/<clip_id>/orientation")
+    def api_delete_orientation(clip_id: str):
+        """Unlock a clip's anchor; refused once labels exist unless ?force=1."""
+        with state_lock:
+            clip = state["manifest"]["clips"].get(clip_id)
+            if clip is None:
+                abort(404, f"Unknown clip: {clip_id}")
+            labeled = [
+                frame_id
+                for frame_id, frame in state["manifest"]["frames"].items()
+                if frame.get("clip_id") == clip_id and frame.get("label_status") == "labeled"
+            ]
+            if labeled and request.args.get("force") != "1":
+                abort(
+                    409,
+                    f"{len(labeled)} labeled frame(s) depend on this orientation; "
+                    "pass ?force=1 to unlock anyway",
+                )
+            clip.pop("orientation", None)
+            save_manifest(state["dataset_dir"], state["manifest"])
+        return jsonify({"clip_id": clip_id, "orientation": None})
 
+    @app.get("/api/frames")
+    def api_frames():
+        manifest = state["manifest"]
+        clip_id = request.args.get("clip")
+        triage = request.args.get("triage")
+        frames = []
+        for frame_id in sorted(manifest["frames"]):
+            frame = manifest["frames"][frame_id]
+            if clip_id and frame["clip_id"] != clip_id:
+                continue
+            if triage and frame.get("triage", "pending") != triage:
+                continue
+            frames.append({
+                "frame_id": frame_id,
+                **frame,
+                "trained_split": state["trained_frames"].get(frame_id),
+            })
+        return jsonify(
+            {"frames": frames, "counts": counts(manifest, clip_id=clip_id)}
+        )
 
-@app.post("/api/label/<frame_id>")
-def api_save_label(frame_id: str):
-    body = request.get_json(force=True)
-    keypoints = body.get("keypoints")
-    expected = len(load_keypoint_schema()["keypoints"])
-    if not isinstance(keypoints, list) or len(keypoints) != expected:
-        abort(400, f"keypoints must contain exactly {expected} canonical points")
-    with state_lock:
+    @app.post("/api/triage")
+    def api_triage():
+        body = request.get_json(force=True)
+        frame_id = body.get("frame_id")
+        status = body.get("status")
+        if status not in TRIAGE_STATES:
+            abort(400, f"status must be one of {TRIAGE_STATES}")
+        with state_lock:
+            frame = state["manifest"]["frames"].get(frame_id)
+            if frame is None:
+                abort(404, f"Unknown frame: {frame_id}")
+            frame["triage"] = status
+            save_manifest(state["dataset_dir"], state["manifest"])
+            clip_counts = counts(state["manifest"], clip_id=frame["clip_id"])
+            total_counts = counts(state["manifest"])
+        return jsonify({"frame_id": frame_id, "status": status,
+                        "clip_counts": clip_counts, "counts": total_counts})
+
+    @app.post("/api/clip/<clip_id>/done")
+    def api_clip_done(clip_id: str):
+        body = request.get_json(force=True)
+        with state_lock:
+            clip = state["manifest"]["clips"].get(clip_id)
+            if clip is None:
+                abort(404, f"Unknown clip: {clip_id}")
+            clip["done"] = bool(body.get("done"))
+            save_manifest(state["dataset_dir"], state["manifest"])
+        return jsonify({"clip_id": clip_id, "done": clip["done"]})
+
+    @app.get("/api/label/<frame_id>")
+    def api_get_label(frame_id: str):
         frame = state["manifest"]["frames"].get(frame_id)
         if frame is None:
             abort(404, f"Unknown frame: {frame_id}")
+        schema = get_schema()
+        predict_available = state["model"] is not None
         clip = state["manifest"]["clips"][frame["clip_id"]]
         orientation = clip_orientation(clip)
         if orientation is None:
-            abort(409, "Set the clip orientation anchor before saving a label")
-        label = {
-            "frame_id": frame_id,
-            "image_w": clip["width"],
-            "image_h": clip["height"],
-            "num_keypoints": expected,
-            "schema": schema_provenance(),
-            "orientation": orientation_for_response(orientation),
-            "keypoints": [
-                {
-                    "x": float(point["x"]),
-                    "y": float(point["y"]),
-                    "v": int(point["v"]),
-                    "src_conf": float(point.get("src_conf", 0.0)),
-                }
-                for point in keypoints
-            ],
-            "saved_at": datetime.now().isoformat(timespec="seconds"),
-        }
+            return jsonify({
+                "error": "Set the clip orientation anchor before labeling.",
+                "orientation_required": True,
+                "schema": schema_provenance(schema),
+                "predict_available": predict_available,
+            }), 409
+
         path = label_path(frame_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(label, handle, indent=2)
-            handle.write("\n")
-        frame["label_status"] = "labeled"
-        save_manifest(state["dataset_dir"], state["manifest"])
-        total_counts = counts(state["manifest"])
-    return jsonify({
-        "frame_id": frame_id,
-        "saved": True,
-        "counts": total_counts,
-        "schema": label["schema"],
-        "orientation": label["orientation"],
-    })
+        force_predict = request.args.get("predict") == "1" and predict_available
+        if path.is_file() and not force_predict:
+            with open(path, "r", encoding="utf-8") as handle:
+                label = json.load(handle)
+            source = "saved"
+        else:
+            points = (
+                predict_keypoints(state["dataset_dir"] / frame["image"])
+                if predict_available
+                else empty_points(len(schema["keypoints"]))
+            )
+            label = {
+                "frame_id": frame_id,
+                "image_w": clip["width"],
+                "image_h": clip["height"],
+                "num_keypoints": len(points),
+                "keypoints": points,
+            }
+            source = "predicted" if predict_available else "empty"
+        return jsonify({
+            "source": source,
+            "label": label,
+            "num_keypoints": len(label.get("keypoints", [])),
+            "orientation": orientation_for_response(orientation),
+            "schema": schema_provenance(schema),
+            "predict_available": predict_available,
+        })
 
+    @app.post("/api/label/<frame_id>")
+    def api_save_label(frame_id: str):
+        body = request.get_json(force=True)
+        schema = get_schema()
+        expected = len(schema["keypoints"])
 
-@app.get("/images/<path:relpath>")
-def serve_image(relpath: str):
-    return send_from_directory(state["dataset_dir"] / "frames", relpath)
+        visible_ends = body.get("visible_ends")
+        if visible_ends not in schema["visible_ends_values"]:
+            abort(400, f"visible_ends must be one of {schema['visible_ends_values']}")
+        keypoints = body.get("keypoints")
+        if not isinstance(keypoints, list) or len(keypoints) != expected:
+            abort(400, f"keypoints must contain exactly {expected} canonical points")
 
+        with state_lock:
+            frame = state["manifest"]["frames"].get(frame_id)
+            if frame is None:
+                abort(404, f"Unknown frame: {frame_id}")
+            clip = state["manifest"]["clips"][frame["clip_id"]]
+            orientation = clip_orientation(clip)
+            if orientation is None:
+                abort(409, "Set the clip orientation anchor before saving a label")
 
-@app.get("/thumbs/<path:relpath>")
-def serve_thumb(relpath: str):
-    return send_from_directory(state["dataset_dir"] / "thumbs", relpath)
+            width, height = clip["width"], clip["height"]
+            cleaned = []
+            for position, point in enumerate(keypoints, start=1):
+                try:
+                    x = float(point["x"])
+                    y = float(point["y"])
+                    v = int(point["v"])
+                    src_conf = float(point.get("src_conf", 0.0))
+                except (KeyError, TypeError, ValueError):
+                    abort(400, f"keypoint {position} must provide numeric x, y, v")
+                if v not in (0, 1, 2):
+                    abort(400, f"keypoint {position}: v must be 0, 1, or 2")
+                if v == 0:
+                    x, y, src_conf = 0.0, 0.0, 0.0
+                elif not (0.0 <= x <= width and 0.0 <= y <= height):
+                    abort(400, f"keypoint {position}: coordinates outside the image")
+                cleaned.append({"x": x, "y": y, "v": v, "src_conf": src_conf})
+
+            conflicts = ends_conflicts(schema, cleaned, visible_ends)
+            if conflicts:
+                return jsonify({
+                    "error": (
+                        f"visible_ends is '{visible_ends}' but points from the other "
+                        "end are placed; fix the declaration or remove the points"
+                    ),
+                    "conflicting_ids": conflicts,
+                }), 422
+
+            label = {
+                "frame_id": frame_id,
+                "image_w": width,
+                "image_h": height,
+                "num_keypoints": expected,
+                "schema": schema_provenance(schema),
+                "orientation": orientation_for_response(orientation),
+                "visible_ends": visible_ends,
+                "keypoints": cleaned,
+                "saved_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            path = label_path(frame_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(label, handle, indent=2)
+                handle.write("\n")
+            frame["label_status"] = "labeled"
+            save_manifest(state["dataset_dir"], state["manifest"])
+            total_counts = counts(state["manifest"])
+        return jsonify({
+            "frame_id": frame_id,
+            "saved": True,
+            "counts": total_counts,
+            "schema": label["schema"],
+            "orientation": label["orientation"],
+            "visible_ends": visible_ends,
+        })
+
+    @app.get("/images/<path:relpath>")
+    def serve_image(relpath: str):
+        return send_from_directory(state["dataset_dir"] / "frames", relpath)
+
+    @app.get("/thumbs/<path:relpath>")
+    def serve_thumb(relpath: str):
+        return send_from_directory(state["dataset_dir"] / "thumbs", relpath)
+
+    return app
 
 
 def parse_args() -> argparse.Namespace:
@@ -508,48 +512,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=Path,
-        default=DEFAULT_MODEL,
-        help=f"Path to the Ultralytics pose model (default: {DEFAULT_MODEL})",
+        default=None,
+        help="Optional pose model trained on this schema, used to prefill points",
     )
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument(
-        "--conf",
-        type=float,
-        default=0.5,
-        help="Minimum model detection confidence (default: 0.5)",
-    )
-    parser.add_argument(
-        "--keypoint-conf",
-        type=float,
-        default=0.25,
-        help="Predicted keypoints below this confidence start hidden (default: 0.25)",
-    )
-    parser.add_argument(
-        "--imgsz",
-        type=int,
-        default=640,
-        help="Inference image size (default: 640)",
-    )
-    parser.add_argument(
-        "--device",
-        default=None,
-        help="Ultralytics device, for example cpu, 0, or 0,1 (default: automatic)",
-    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    state.update(
-        dataset_dir=args.dataset,
-        model_path=args.model,
-        conf=args.conf,
-        keypoint_conf=args.keypoint_conf,
-        imgsz=args.imgsz,
-        device=args.device,
-        manifest=load_manifest(args.dataset),
-    )
-    tally = counts(state["manifest"])
+    app = build_app(args.dataset, model_path=args.model)
+    tally = counts(load_manifest(args.dataset))
     print(f"Loaded manifest: {tally['clips']} clip(s), {tally['candidates']} frames")
     print(f"Open http://127.0.0.1:{args.port}")
     app.run(host="127.0.0.1", port=args.port, debug=False)
