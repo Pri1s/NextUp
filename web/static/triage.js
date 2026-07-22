@@ -9,9 +9,11 @@ const grid = document.getElementById('grid');
 const NEXT_STATUS = { pending: 'keep', keep: 'skip', skip: 'pending' };
 
 function countsHtml(c) {
+  const trained = frames.reduce((n, f) => n + (f.trained_split ? 1 : 0), 0);
   return `<b>${c.candidates}</b> candidates · <b>${c.pending}</b> pending · ` +
          `<b class="keep">${c.keep}</b> keep · <b class="skip">${c.skip}</b> skip · ` +
-         `<b class="labeled">${c.labeled}</b> labeled`;
+         `<b class="labeled">${c.labeled}</b> labeled` +
+         (trained ? ` · <b class="trained">${trained}</b> trained-on` : '');
 }
 
 function visibleFrames() {
@@ -29,6 +31,13 @@ function render() {
     img.loading = 'lazy';
     img.src = '/thumbs/' + frame.thumb.replace(/^thumbs\//, '');
     cell.appendChild(img);
+    if (frame.trained_split) {
+      const badge = document.createElement('span');
+      badge.className = 'trained-badge ' + frame.trained_split;
+      badge.title = `In the ${frame.trained_split} split of the last fine-tune`;
+      badge.textContent = frame.trained_split;
+      cell.appendChild(badge);
+    }
     const tag = document.createElement('span');
     tag.className = 'tag';
     tag.textContent = `${frame.timestamp_s.toFixed(1)}s · ${frame.triage}` +

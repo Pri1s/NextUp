@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 940" role="img" aria-labelledby="title desc">
+  <title id="title">Canonical basketball-court keypoints (schema v3)</title>
+  <desc id="desc">North is at the top and east is at the right. Each numbered marker is one fixed court landmark. Drawn to scale for an NFHS 84 by 50 foot court at 9 units per foot.</desc>
+  <style>
+    .court { fill: #18181b; stroke: #d4d4d8; stroke-width: 4; }
+    .line { fill: none; stroke: #d4d4d8; stroke-width: 3; }
+    .subtle { fill: none; stroke: #71717a; stroke-width: 2; }
+    .direction { fill: #d4d4d8; font: 700 18px system-ui, sans-serif; letter-spacing: 1px; }
+    .marker { fill: #18181b; stroke: #ffc46b; stroke-width: 4; }
+    .marker-label { fill: #fff4d7; font: 700 18px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; pointer-events: none; paint-order: stroke; stroke: #18181b; stroke-width: 2px; }
+    .keypoint.active .marker { fill: #2b5ec4; stroke: #d9ecff; stroke-width: 6; }
+    .keypoint.active .marker-label { fill: white; }
+  </style>
+  <rect class="court" x="25" y="92" width="450" height="756" rx="2"/>
+  <path class="line" d="M25 470H475 M196 92V263H304V92 M196 848V677H304V848"/>
+  <circle class="line" cx="250" cy="470" r="54"/>
+  <path class="line" d="M72.25 92V139.25A177.75 177.75 0 0 0 427.75 139.25V92 M72.25 848V800.75A177.75 177.75 0 0 1 427.75 800.75V848"/>
+  <circle class="subtle" cx="250" cy="263" r="54"/>
+  <circle class="subtle" cx="250" cy="677" r="54"/>
+  <path class="subtle" d="M223 128h54M250 128v11 M223 812h54M250 801v11"/>
+  <text class="direction" x="250" y="58" text-anchor="middle">NORTH</text>
+  <text class="direction" x="250" y="895" text-anchor="middle">SOUTH</text>
+  <text class="direction" x="490" y="470" text-anchor="end" transform="rotate(90 490 470)">EAST</text>
+  <text class="direction" x="10" y="470" text-anchor="middle" transform="rotate(-90 10 470)">WEST</text>
+
+  <g id="kpt-1" class="keypoint"><circle class="marker" cx="475" cy="92" r="13"/><text class="marker-label" x="475" y="92">1</text></g>
+  <g id="kpt-2" class="keypoint"><circle class="marker" cx="427.75" cy="92" r="13"/><text class="marker-label" x="427.75" y="92">2</text></g>
+  <g id="kpt-3" class="keypoint"><circle class="marker" cx="304" cy="92" r="13"/><text class="marker-label" x="304" y="92">3</text></g>
+  <g id="kpt-4" class="keypoint"><circle class="marker" cx="196" cy="92" r="13"/><text class="marker-label" x="196" y="92">4</text></g>
+  <g id="kpt-5" class="keypoint"><circle class="marker" cx="72.25" cy="92" r="13"/><text class="marker-label" x="72.25" y="92">5</text></g>
+  <g id="kpt-6" class="keypoint"><circle class="marker" cx="25" cy="92" r="13"/><text class="marker-label" x="25" y="92">6</text></g>
+  <g id="kpt-7" class="keypoint"><circle class="marker" cx="304" cy="263" r="13"/><text class="marker-label" x="304" y="263">7</text></g>
+  <g id="kpt-8" class="keypoint"><circle class="marker" cx="196" cy="263" r="13"/><text class="marker-label" x="196" y="263">8</text></g>
+  <g id="kpt-9" class="keypoint"><circle class="marker" cx="250" cy="317" r="13"/><text class="marker-label" x="250" y="317">9</text></g>
+  <g id="kpt-10" class="keypoint"><circle class="marker" cx="25" cy="470" r="13"/><text class="marker-label" x="25" y="470">10</text></g>
+  <g id="kpt-11" class="keypoint"><circle class="marker" cx="475" cy="470" r="13"/><text class="marker-label" x="475" y="470">11</text></g>
+  <g id="kpt-12" class="keypoint"><circle class="marker" cx="196" cy="470" r="13"/><text class="marker-label" x="196" y="470">12</text></g>
+  <g id="kpt-13" class="keypoint"><circle class="marker" cx="304" cy="470" r="13"/><text class="marker-label" x="304" y="470">13</text></g>
+  <g id="kpt-14" class="keypoint"><circle class="marker" cx="25" cy="848" r="13"/><text class="marker-label" x="25" y="848">14</text></g>
+  <g id="kpt-15" class="keypoint"><circle class="marker" cx="72.25" cy="848" r="13"/><text class="marker-label" x="72.25" y="848">15</text></g>
+  <g id="kpt-16" class="keypoint"><circle class="marker" cx="196" cy="848" r="13"/><text class="marker-label" x="196" y="848">16</text></g>
+  <g id="kpt-17" class="keypoint"><circle class="marker" cx="304" cy="848" r="13"/><text class="marker-label" x="304" y="848">17</text></g>
+  <g id="kpt-18" class="keypoint"><circle class="marker" cx="427.75" cy="848" r="13"/><text class="marker-label" x="427.75" y="848">18</text></g>
+  <g id="kpt-19" class="keypoint"><circle class="marker" cx="475" cy="848" r="13"/><text class="marker-label" x="475" y="848">19</text></g>
+  <g id="kpt-20" class="keypoint"><circle class="marker" cx="196" cy="677" r="13"/><text class="marker-label" x="196" y="677">20</text></g>
+  <g id="kpt-21" class="keypoint"><circle class="marker" cx="304" cy="677" r="13"/><text class="marker-label" x="304" y="677">21</text></g>
+  <g id="kpt-22" class="keypoint"><circle class="marker" cx="250" cy="623" r="13"/><text class="marker-label" x="250" y="623">22</text></g>
+</svg>
