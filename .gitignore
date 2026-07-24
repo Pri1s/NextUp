@@ -5,6 +5,8 @@ __pycache__/
 output_videos/
 input_videos/
 runs/
+engine_out/
+models/
 dataset/frames/
 dataset/thumbs/
 dataset/labels/

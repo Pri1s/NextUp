@@ -193,6 +193,28 @@ def build_app(
             abort(404, f"Unknown frame: {frame_id}")
         return state["dataset_dir"] / "labels" / frame["clip_id"] / f"{frame_id}.json"
 
+    def previous_labeled_frame(frame_id: str, frame: dict) -> str | None:
+        """Closest earlier frame in the same clip that already has a saved label.
+
+        Adjacent kept frames are usually close enough in time that copying
+        the prior frame's points is a faster starting point to correct than
+        placing every point from scratch or trusting a still-undertrained
+        model.
+        """
+        clip_id = frame["clip_id"]
+        frame_index = frame["frame_index"]
+        candidates = [
+            (other["frame_index"], other_id)
+            for other_id, other in state["manifest"]["frames"].items()
+            if other["clip_id"] == clip_id
+            and other_id != frame_id
+            and other.get("label_status") == "labeled"
+            and other["frame_index"] < frame_index
+        ]
+        if not candidates:
+            return None
+        return max(candidates)[1]
+
     def page(name: str):
         return send_from_directory(WEB_DIR, name)
 
@@ -383,10 +405,26 @@ def build_app(
 
         path = label_path(frame_id)
         force_predict = request.args.get("predict") == "1" and predict_available
+        prev_frame_id = None if force_predict else previous_labeled_frame(frame_id, frame)
         if path.is_file() and not force_predict:
             with open(path, "r", encoding="utf-8") as handle:
                 label = json.load(handle)
             source = "saved"
+        elif prev_frame_id is not None:
+            with open(label_path(prev_frame_id), "r", encoding="utf-8") as handle:
+                prev_label = json.load(handle)
+            points = [
+                {"x": point["x"], "y": point["y"], "v": point["v"], "src_conf": 0.0}
+                for point in prev_label["keypoints"]
+            ]
+            label = {
+                "frame_id": frame_id,
+                "image_w": clip["width"],
+                "image_h": clip["height"],
+                "num_keypoints": len(points),
+                "keypoints": points,
+            }
+            source = "previous_frame"
         else:
             points = (
                 predict_keypoints(state["dataset_dir"] / frame["image"])

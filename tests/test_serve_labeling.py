@@ -137,6 +137,38 @@ class ServeLabelingTests(unittest.TestCase):
             all(p == {"x": 0.0, "y": 0.0, "v": 0, "src_conf": 0.0} for p in data["label"]["keypoints"])
         )
 
+    def test_prefill_copies_previous_labeled_frame(self):
+        self.lock_orientation()
+        points = valid_points(self.n)
+        points[3] = {"x": 500.0, "y": 600.0, "v": 0, "src_conf": 0.9}
+        self.assertEqual(self.save(points).status_code, 200)
+
+        data = self.client.get("/api/label/clipA_f000002").get_json()
+        self.assertEqual(data["source"], "previous_frame")
+        got = data["label"]["keypoints"]
+        # v=0 points are zeroed out on save (test_save_zeroes_unlabeled_points),
+        # so the copy should reflect that, not the pre-save x/y we sent.
+        expected = [(p["x"], p["y"], p["v"]) for p in points]
+        expected[3] = (0.0, 0.0, 0)
+        self.assertEqual([(p["x"], p["y"], p["v"]) for p in got], expected)
+        # src_conf doesn't carry over — it described the previous frame's
+        # provenance, not this one's.
+        self.assertTrue(all(p["src_conf"] == 0.0 for p in got))
+
+    def test_prefill_falls_back_to_empty_with_no_previous_frame(self):
+        self.lock_orientation()
+        data = self.client.get("/api/label/clipA_f000001").get_json()
+        self.assertEqual(data["source"], "empty")
+
+    def test_predict_param_is_noop_without_a_model(self):
+        self.lock_orientation()
+        self.assertEqual(self.save().status_code, 200)
+        # No model loaded in this fixture, so ?predict=1 can't force a model
+        # prediction (the UI hides the repredict control in this case too) —
+        # normal prefill priority still applies underneath it.
+        data = self.client.get("/api/label/clipA_f000002?predict=1").get_json()
+        self.assertEqual(data["source"], "previous_frame")
+
     def test_save_happy_path(self):
         self.lock_orientation()
         response = self.save()

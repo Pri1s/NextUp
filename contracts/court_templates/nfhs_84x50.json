@@ -1,0 +1,32 @@
+{
+  "template_name": "nfhs_84x50",
+  "description": "NFHS / high-school court geometry (84x50 ft), matching the court_xy_ft values embedded in court_keypoints.v3.json. Used by the hs profile once the HS pose model plugs in.",
+  "units": "feet",
+  "length": 84.0,
+  "width": 50.0,
+  "court_xy_ft_convention": "[along from north baseline, across from west sideline]",
+  "court_xy_ft": {
+    "north_baseline_sideline_east": [0.0, 50.0],
+    "north_three_point_baseline_east": [0.0, 44.75],
+    "north_lane_baseline_east": [0.0, 31.0],
+    "north_lane_baseline_west": [0.0, 19.0],
+    "north_three_point_baseline_west": [0.0, 5.25],
+    "north_baseline_sideline_west": [0.0, 0.0],
+    "north_lane_free_throw_east": [19.0, 31.0],
+    "north_lane_free_throw_west": [19.0, 19.0],
+    "north_three_point_apex": [25.0, 25.0],
+    "midcourt_sideline_west": [42.0, 0.0],
+    "midcourt_sideline_east": [42.0, 50.0],
+    "center_circle_midcourt_west": [42.0, 19.0],
+    "center_circle_midcourt_east": [42.0, 31.0],
+    "south_baseline_sideline_west": [84.0, 0.0],
+    "south_three_point_baseline_west": [84.0, 5.25],
+    "south_lane_baseline_west": [84.0, 19.0],
+    "south_lane_baseline_east": [84.0, 31.0],
+    "south_three_point_baseline_east": [84.0, 44.75],
+    "south_baseline_sideline_east": [84.0, 50.0],
+    "south_lane_free_throw_west": [65.0, 19.0],
+    "south_lane_free_throw_east": [65.0, 31.0],
+    "south_three_point_apex": [59.0, 25.0]
+  }
+}
