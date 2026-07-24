@@ -387,6 +387,8 @@ async function loadFrame(predict) {
     setStatus('saved label loaded');
   } else if (labelSource === 'predicted') {
     setStatus('model prefill — verify every point, then confirm visible ends');
+  } else if (labelSource === 'previous_frame') {
+    setStatus('copied from previous frame — fix/move points, then confirm visible ends');
   } else {
     setStatus('confirm visible ends (1/2/3), then click keypoints in the list to place them');
   }

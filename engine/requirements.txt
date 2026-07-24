@@ -1,0 +1,12 @@
+# Engine dependencies, kept separate from the training-side requirements.txt so
+# the two workflows can diverge. Consequent features (team embeddings, minimap)
+# will add their own deps here rather than to the training file.
+opencv-python>=4.8
+numpy>=1.24
+ultralytics>=8.3
+# Pipeline: ByteTrack for persistent player ids (engine/track/bytetrack.py).
+# Upper bound: ByteTrack is deprecated in 0.28 and removed in 0.30 — revisit the
+# tracker wrapper before lifting this cap.
+supervision>=0.25,<0.30
+# Optional: only needed for `--format parquet` record shards (not yet wired).
+# pyarrow>=15

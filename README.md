@@ -7,6 +7,12 @@ is
 Once you have some labels, [`TRAINING.md`](TRAINING.md) covers fine-tuning a
 pose model on them and reading the results.
 
+> **Two isolated workflows.** This repo is the court-keypoint *training
+> grounds* (everything below). The NBA game-analysis *engine* is walled off in
+> [`engine/`](engine/) and shares only the canonical schema via
+> [`contracts/`](contracts/) — see [`ENGINE.md`](ENGINE.md). The finished HS
+> pose model plugs into the same seat the NBA court model occupies.
+
 > **Superseded:** the reloc2-derived K1–K18 model and schema v2 are no longer
 > used — the model's point semantics were never confirmed. The weights and
 > schema v2 files have been removed; nothing in the v3 pipeline references

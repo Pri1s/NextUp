@@ -1,0 +1,32 @@
+{
+  "template_name": "nba_94x50",
+  "description": "NBA court geometry (94x50 ft) for the same 22 canonical landmarks. Derived from NBA rules: 16 ft lane (edges 17/33), free-throw line 19 ft from baseline, corner three-point line 3 ft from sideline (edges 3/47), three-point apex 29 ft from baseline (5.25 ft basket + 23.75 ft arc), center circle 6 ft radius (edges 19/31), midcourt at 47 ft.",
+  "units": "feet",
+  "length": 94.0,
+  "width": 50.0,
+  "court_xy_ft_convention": "[along from north baseline, across from west sideline]",
+  "court_xy_ft": {
+    "north_baseline_sideline_east": [0.0, 50.0],
+    "north_three_point_baseline_east": [0.0, 47.0],
+    "north_lane_baseline_east": [0.0, 33.0],
+    "north_lane_baseline_west": [0.0, 17.0],
+    "north_three_point_baseline_west": [0.0, 3.0],
+    "north_baseline_sideline_west": [0.0, 0.0],
+    "north_lane_free_throw_east": [19.0, 33.0],
+    "north_lane_free_throw_west": [19.0, 17.0],
+    "north_three_point_apex": [29.0, 25.0],
+    "midcourt_sideline_west": [47.0, 0.0],
+    "midcourt_sideline_east": [47.0, 50.0],
+    "center_circle_midcourt_west": [47.0, 19.0],
+    "center_circle_midcourt_east": [47.0, 31.0],
+    "south_baseline_sideline_west": [94.0, 0.0],
+    "south_three_point_baseline_west": [94.0, 3.0],
+    "south_lane_baseline_west": [94.0, 17.0],
+    "south_lane_baseline_east": [94.0, 33.0],
+    "south_three_point_baseline_east": [94.0, 47.0],
+    "south_baseline_sideline_east": [94.0, 50.0],
+    "south_lane_free_throw_west": [75.0, 17.0],
+    "south_lane_free_throw_east": [75.0, 33.0],
+    "south_three_point_apex": [65.0, 25.0]
+  }
+}
