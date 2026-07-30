@@ -16,6 +16,14 @@
     <div class="counts" id="totals">loading…</div>
   </header>
   <main>
+    <div class="benchmark-entry" id="benchmark-entry" hidden>
+      <div>
+        <span class="eyebrow">Milestone 1 · six locked frames</span>
+        <h2>Painted court-marking benchmark</h2>
+        <p>Trace visible line centerlines for the hybrid-calibration reference set.</p>
+      </div>
+      <a class="btn primary" href="/benchmark-label">Open marking labeler</a>
+    </div>
     <div class="clip-list" id="clips"></div>
     <p class="hint">
       Add clips to <code>input_videos/</code> and run
@@ -30,6 +38,9 @@
              `<b class="skip">${c.skip}</b> skip · <b class="labeled">${c.labeled}</b> labeled`;
     }
     async function load() {
+      fetch('/api/benchmark').then(response => {
+        if (response.ok) document.getElementById('benchmark-entry').hidden = false;
+      }).catch(() => {});
       const data = await (await fetch('/api/clips')).json();
       document.getElementById('totals').innerHTML = countsHtml(data.counts);
       const list = document.getElementById('clips');

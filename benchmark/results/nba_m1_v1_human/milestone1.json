@@ -1,0 +1,40 @@
+{
+  "schema_version": "milestone-result-1.0.0",
+  "milestone": 1,
+  "status": "complete",
+  "benchmark_manifest": "nba_m1_v1",
+  "reference_set": "nba_m1_v1_human",
+  "reference_authority": "single_human_reference",
+  "frame_count": 6,
+  "agent_annotation": {
+    "decision": "rejected",
+    "reason": "The frozen synthetic test failed the p95 and per-family signed-offset precision gates. Real-frame agent passes, consensus, and adjudication were therefore not run.",
+    "evidence": "agent_synthetic_gate.json"
+  },
+  "human_reference": {
+    "status": "validated",
+    "frames_complete": 6,
+    "frames_expected": 6,
+    "manifest": "../../references/nba_m1_v1_human.json",
+    "directory": "../../references/nba_m1_v1_human"
+  },
+  "baseline_reports": {
+    "confident": "baseline_confident.json",
+    "probable": "baseline_probable.json",
+    "same_result_on_locked_frames": true,
+    "frames_scored": 5,
+    "frames_unscored": 1
+  },
+  "expansion_decision": {
+    "selected_manifest": "nba_m1_v1",
+    "expanded_manifest": "nba_m1_v1_expanded",
+    "decision": "deferred_not_required_for_milestone_1",
+    "reason": "The core set covers clean, occluded, tight/graphics, and logo-heavy views and is sufficient to establish the baseline. The three locked additions remain available only if a later hybrid comparison is borderline or demonstrates a coverage gap."
+  },
+  "limitations": [
+    "The benchmark has six deliberately selected frames from three clips and is exploratory, not a production accuracy claim.",
+    "The reference was created by one human labeler and has not received an independent second-person audit.",
+    "Only five frames have scoreable baseline transforms; one refusal is retained as an unscored coverage result.",
+    "The far-depth band contains only six annotation samples, so its error estimates are directional rather than stable population statistics."
+  ]
+}

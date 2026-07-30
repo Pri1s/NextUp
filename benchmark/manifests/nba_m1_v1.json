@@ -1,0 +1,56 @@
+{
+  "schema_version": "benchmark-manifest-1.0.0",
+  "manifest_id": "nba_m1_v1",
+  "layout_id": "nba_halfcourt",
+  "description": "Milestone 1 exploratory shadow-mode benchmark: the existing six pilot frames, one easy and one hard frame from each of three NBA clips. The set is intentionally small and reuses frames already present in the recorded confident and probable calibration runs. It supports feasibility comparisons, not production-level accuracy claims.",
+  "frames": [
+    {
+      "frame_id": "video_1_000012",
+      "clip": "input_videos/video_1.mp4",
+      "frame_index": 12,
+      "stratum": "clean",
+      "pilot": true,
+      "notes": "Easy selection for video_1. Full half-court with lane, free-throw geometry, and an unbroken three-point arc; off-axis floor branding remains a distractor."
+    },
+    {
+      "frame_id": "video_1_000090",
+      "clip": "input_videos/video_1.mp4",
+      "frame_index": 90,
+      "stratum": "occluded",
+      "pilot": true,
+      "notes": "Hard selection for video_1. Players fragment the lane edges and restricted-area arc while the existing calibration remains scoreable."
+    },
+    {
+      "frame_id": "video_2_000018",
+      "clip": "input_videos/video_2.mp4",
+      "frame_index": 18,
+      "stratum": "clean",
+      "pilot": true,
+      "notes": "Easy selection for video_2. Wide clean half-court set with the whole three-point arc visible."
+    },
+    {
+      "frame_id": "video_2_000141",
+      "clip": "input_videos/video_2.mp4",
+      "frame_index": 141,
+      "stratum": "graphics_tight",
+      "pilot": true,
+      "notes": "Hard selection for video_2. Tight crop with the near sideline absent, a score bug crossing the floor, and a broadcast watermark; the existing calibration remains scoreable."
+    },
+    {
+      "frame_id": "video_3_000015",
+      "clip": "input_videos/video_3.mp4",
+      "frame_index": 15,
+      "stratum": "clean",
+      "pilot": true,
+      "notes": "Easy selection for video_3. Clean half-court on a third floor appearance."
+    },
+    {
+      "frame_id": "video_3_000146",
+      "clip": "input_videos/video_3.mp4",
+      "frame_index": 146,
+      "stratum": "logo_midcourt",
+      "pilot": true,
+      "notes": "Hard selection for video_3. The existing engine is uncalibrated and a large center-court logo obscures the center circle, testing false-edge rejection and explicit skips."
+    }
+  ]
+}

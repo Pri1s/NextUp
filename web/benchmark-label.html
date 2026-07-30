@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Court Marking Labeler – NextUp</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="benchmark-body">
+  <header>
+    <a class="back-link" href="/" aria-label="Back to labeling home">←</a>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">NU</span>
+      <h1>Court marking labeler <span>/ Milestone 1</span></h1>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="benchmark-progress" id="benchmark-progress">Loading six frames…</div>
+    <div class="status-pill" id="benchmark-save-status" aria-live="polite">Loading</div>
+  </header>
+
+  <div class="benchmark-layout">
+    <main class="benchmark-stage" aria-label="Court frame labeling canvas">
+      <div class="benchmark-canvas-toolbar">
+        <button class="icon-btn" id="zoom-out" aria-label="Zoom out">−</button>
+        <button class="zoom-value" id="zoom-reset" title="Fit image to window">Fit</button>
+        <button class="icon-btn" id="zoom-in" aria-label="Zoom in">+</button>
+        <span class="canvas-coordinates" id="canvas-coordinates">x — · y —</span>
+      </div>
+      <div class="frame-chip" id="frame-chip"></div>
+      <div id="benchmark-canvas-wrap">
+        <canvas id="benchmark-canvas"></canvas>
+        <div class="empty-canvas" id="empty-canvas">Loading frame…</div>
+      </div>
+      <div class="canvas-tip">
+        Trace only visible paint · 4+ straight / 6+ curve · <kbd>Space</kbd>+drag pans
+      </div>
+    </main>
+
+    <aside class="benchmark-side" aria-label="Court marking controls">
+      <section class="benchmark-intro">
+        <div>
+          <span class="eyebrow">Accuracy rule</span>
+          <h2>Trace the middle of the paint</h2>
+        </div>
+        <p>Use only pixels you can actually see. Skip uncertain markings—never extend through
+          players, logos, graphics, or beyond the frame.</p>
+      </section>
+
+      <section class="annotator-row">
+        <label for="annotator-id">Labeler</label>
+        <input id="annotator-id" value="human-pri" autocomplete="off" spellcheck="false">
+      </section>
+
+      <section class="marking-reference" aria-labelledby="marking-reference-title">
+        <div class="side-heading">
+          <h2 id="marking-reference-title">Court marking map</h2>
+          <span>marking IDs · not points</span>
+        </div>
+        <div class="reference-orientation" role="group" aria-label="Guide basket side">
+          <span>Basket side</span>
+          <div>
+            <button id="guide-basket-left" class="active" type="button">← Left</button>
+            <button id="guide-basket-right" type="button">Right →</button>
+          </div>
+        </div>
+        <div class="reference-half-rule" id="reference-half-rule">
+          Label only the half between midcourt and the left basket.
+        </div>
+        <div class="reference-axis reference-axis-far">Far side · away from camera</div>
+        <canvas id="marking-reference-canvas" role="img"
+          aria-label="Numbered top-down map of the fourteen court markings"></canvas>
+        <div class="reference-axis reference-axis-near">Near side · camera side</div>
+        <div class="reference-selected">
+          <span id="reference-selected-number">01</span>
+          <div>
+            <b id="reference-selected-name">Baseline</b>
+            <small id="reference-selected-hint">Highlighted on the map</small>
+          </div>
+        </div>
+        <p>The numbered badge identifies the whole marking. The lettered dots demonstrate
+          sample <em>order only</em>—they are not fixed court locations. Put all samples
+          inside whatever portion of that paint is actually visible in the video. The
+          selected number appears in the card below so it cannot cover the letters.</p>
+      </section>
+
+      <section class="active-feature-card" aria-labelledby="active-feature-name">
+        <div class="feature-card-heading">
+          <span class="feature-swatch" id="active-feature-swatch"></span>
+          <div>
+            <span class="eyebrow" id="active-feature-kind">Select a marking</span>
+            <h2 id="active-feature-name">—</h2>
+          </div>
+          <span class="sample-count" id="sample-count"></span>
+        </div>
+        <p id="active-feature-description"></p>
+        <p class="feature-warning" id="active-feature-warning"></p>
+
+        <div class="mode-tabs" role="tablist" aria-label="Feature disposition">
+          <button id="mode-trace" class="active" role="tab" aria-selected="true">Trace visible paint</button>
+          <button id="mode-skip" role="tab" aria-selected="false">Skip this marking</button>
+        </div>
+
+        <div id="trace-controls">
+          <div class="trace-requirement" id="trace-requirement">
+            Click at least four ordered points along this same painted marking.
+          </div>
+          <div class="compact-fields">
+            <label>Visibility
+              <select id="feature-visibility">
+                <option value="clear">Clear</option>
+                <option value="faint">Faint</option>
+                <option value="partially_occluded">Partially occluded</option>
+              </select>
+            </label>
+            <label>Uncertainty
+              <select id="feature-uncertainty">
+                <option value="0.5">±0.5 px</option>
+                <option value="1" selected>±1 px</option>
+                <option value="2">±2 px</option>
+                <option value="4">±4 px</option>
+                <option value="8">±8 px</option>
+              </select>
+            </label>
+          </div>
+          <div class="trace-actions">
+            <button class="btn" id="undo-point">Undo point <kbd>⌫</kbd></button>
+            <button class="btn" id="mark-gap">Gap before next point <kbd>G</kbd></button>
+            <button class="btn danger" id="clear-trace">Clear trace</button>
+          </div>
+        </div>
+
+        <div id="skip-controls" hidden>
+          <label for="skip-reason">Why is it skipped?</label>
+          <select id="skip-reason">
+            <option value="not_visible">Not visible</option>
+            <option value="out_of_frame">Outside the frame</option>
+            <option value="fully_occluded">Fully occluded</option>
+            <option value="too_faint">Too faint to place accurately</option>
+            <option value="ambiguous_identity">Could be a different marking/logo</option>
+          </select>
+          <button class="btn primary wide" id="confirm-skip">Mark as skipped</button>
+        </div>
+
+        <label class="notes-field">Feature note
+          <textarea id="feature-notes" rows="2" placeholder="Optional: what made this difficult?"></textarea>
+        </label>
+      </section>
+
+      <section class="feature-section" aria-labelledby="markings-heading">
+        <div class="side-heading">
+          <h2 id="markings-heading">Court markings</h2>
+          <span id="feature-progress">0 / 14</span>
+        </div>
+        <div class="feature-list" id="feature-list"></div>
+      </section>
+
+      <details class="junction-section">
+        <summary>
+          <span>Visible intersections</span>
+          <span id="junction-progress">optional</span>
+        </summary>
+        <p>Place a junction only when both listed markings were traced and their painted
+          centerlines visibly meet.</p>
+        <div id="junction-list" class="junction-list"></div>
+        <button class="btn danger wide" id="clear-junction" disabled>Clear selected intersection</button>
+      </details>
+
+      <section class="frame-notes">
+        <label for="frame-notes">Frame note</label>
+        <textarea id="frame-notes" rows="2" placeholder="Optional frame-level observation"></textarea>
+      </section>
+
+      <section class="completion-card">
+        <div id="completion-message">Account for every marking to finish this frame.</div>
+        <button class="btn wide" id="continue-incomplete" hidden>Continue an unfinished trace</button>
+        <button class="btn primary wide" id="finish-frame" disabled>Finish frame</button>
+        <div class="frame-nav">
+          <button class="btn" id="previous-frame">← Previous</button>
+          <button class="btn" id="next-frame">Next →</button>
+        </div>
+      </section>
+
+      <section class="keys benchmark-keys">
+        <kbd>⌘S</kbd> finalize when complete · <kbd>←</kbd><kbd>→</kbd> change frame ·
+        <kbd>Esc</kbd> cancel intersection placement · click and drag a sample to refine it.
+      </section>
+    </aside>
+  </div>
+
+  <div class="toast" id="benchmark-toast" role="status" aria-live="polite"></div>
+  <script src="/static/benchmark-label.js"></script>
+</body>
+</html>

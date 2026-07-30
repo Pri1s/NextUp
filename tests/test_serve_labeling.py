@@ -1,4 +1,5 @@
 import json
+import math
 import shutil
 import subprocess
 import sys
@@ -7,7 +8,14 @@ import unittest
 from pathlib import Path
 
 from pipeline_manifest import save_manifest
-from serve import KEYPOINT_SCHEMA_PATH, build_app, load_keypoint_schema
+from contracts.annotations import MarkingFeature
+from serve import (
+    HUMAN_ANNOTATOR_PASS_ID,
+    HUMAN_ANNOTATOR_PROMPT_VERSION,
+    KEYPOINT_SCHEMA_PATH,
+    build_app,
+    load_keypoint_schema,
+)
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 
@@ -274,6 +282,260 @@ class ToySchemaTests(unittest.TestCase):
             json={"keypoints": valid_points(22), "visible_ends": "both"},
         )
         self.assertEqual(wrong.status_code, 400)
+
+
+class BenchmarkLabelingTests(unittest.TestCase):
+    """The six-frame human UI saves strict, model-blind benchmark annotations."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.dataset_dir = self.root / "dataset"
+        self.dataset_dir.mkdir()
+        make_manifest(self.dataset_dir)
+
+        self.benchmark_dir = self.root / "benchmark"
+        images = self.benchmark_dir / "frames" / "images"
+        images.mkdir(parents=True)
+        (images / "video_1_000012.png").write_bytes(b"\x89PNG\r\n\x1a\nfixture")
+        self.frame = {
+            "frame_id": "video_1_000012",
+            "clip": "input_videos/video_1.mp4",
+            "frame_index": 12,
+            "stratum": "clean",
+            "pilot": True,
+            "path": "images/video_1_000012.png",
+            "sha256": "a" * 64,
+            "width": 1280,
+            "height": 720,
+        }
+        (self.benchmark_dir / "frames" / "frames.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "benchmark-export-1.0.0",
+                    "manifest_id": "nba_m1_v1",
+                    "layout_id": "nba_halfcourt",
+                    "glossary_version": "glossary-1.0.0",
+                    "frame_count": 1,
+                    "frames": [self.frame],
+                }
+            ),
+            encoding="utf-8",
+        )
+        app = build_app(self.dataset_dir, benchmark_dir=self.benchmark_dir)
+        app.testing = True
+        self.client = app.test_client()
+
+    def empty_annotation(self):
+        return self.client.get(
+            "/api/benchmark/annotation/video_1_000012"
+        ).get_json()["annotation"]
+
+    @staticmethod
+    def skip_all(annotation, except_features=()):
+        except_features = set(except_features)
+        annotation["skipped"] = [
+            {"feature": feature.value, "reason": "not_visible", "notes": ""}
+            for feature in MarkingFeature
+            if feature not in except_features
+        ]
+        return annotation
+
+    def save(self, annotation, finalize=False):
+        return self.client.post(
+            "/api/benchmark/annotation/video_1_000012",
+            json={"annotation": annotation, "finalize": finalize},
+        )
+
+    def test_ui_and_catalog_are_available(self):
+        page = self.client.get("/benchmark-label")
+        try:
+            self.assertEqual(page.status_code, 200)
+            self.assertIn(b"Court marking labeler", page.data)
+            self.assertIn(b"marking-reference-canvas", page.data)
+            self.assertIn(b"guide-basket-left", page.data)
+            self.assertIn(b"guide-basket-right", page.data)
+            self.assertIn(b"reference-half-rule", page.data)
+            self.assertIn(b"Trace only visible paint", page.data)
+            self.assertIn(b"order only", page.data)
+            self.assertIn(b"continue-incomplete", page.data)
+        finally:
+            page.close()
+
+        payload = self.client.get("/api/benchmark").get_json()
+        self.assertEqual(payload["manifest_id"], "nba_m1_v1")
+        self.assertEqual(len(payload["frames"]), 1)
+        self.assertEqual(len(payload["features"]), len(MarkingFeature))
+        self.assertTrue(all(item["description"] for item in payload["features"]))
+        self.assertEqual(payload["pass_id"], HUMAN_ANNOTATOR_PASS_ID)
+        reference = payload["reference_court"]
+        self.assertEqual(reference["half_length"], 47.0)
+        self.assertEqual(reference["width"], 50.0)
+        self.assertEqual(set(reference["markings"]), {item.value for item in MarkingFeature})
+        self.assertEqual(
+            set(reference["label_anchors"]), {item.value for item in MarkingFeature}
+        )
+        self.assertEqual(reference["markings"]["baseline"], [[0.0, 0.0], [0.0, 50.0]])
+        self.assertGreater(len(reference["markings"]["three_point_arc"]), 20)
+        anchors = reference["label_anchors"]
+        self.assertEqual(anchors["baseline"], [0.0, 25.0])
+        self.assertEqual(anchors["free_throw_line"], [19.0, 25.0])
+        self.assertAlmostEqual(anchors["free_throw_circle_far_half"][0], 25.0, places=2)
+        self.assertAlmostEqual(anchors["free_throw_circle_far_half"][1], 25.0, places=9)
+        self.assertAlmostEqual(anchors["free_throw_circle_near_half"][0], 13.0, places=2)
+        self.assertAlmostEqual(anchors["free_throw_circle_near_half"][1], 25.0, places=9)
+        self.assertAlmostEqual(anchors["restricted_area_arc"][0], 9.25, places=2)
+        self.assertAlmostEqual(anchors["restricted_area_arc"][1], 25.0, places=9)
+        self.assertLess(
+            anchors["restricted_area_arc"][0],
+            anchors["free_throw_circle_near_half"][0],
+        )
+        self.assertLess(
+            anchors["free_throw_circle_near_half"][0],
+            anchors["free_throw_line"][0],
+        )
+        self.assertLess(
+            anchors["free_throw_line"][0],
+            anchors["free_throw_circle_far_half"][0],
+        )
+
+        # A numbered badge identifies a whole marking, so its centre must sit on
+        # that marking rather than looking like a scattered keypoint.
+        for feature, anchor in reference["label_anchors"].items():
+            distances = []
+            for start, end in zip(
+                reference["markings"][feature],
+                reference["markings"][feature][1:],
+            ):
+                dx, dy = end[0] - start[0], end[1] - start[1]
+                length_sq = dx * dx + dy * dy
+                amount = (
+                    0.0
+                    if length_sq == 0
+                    else max(
+                        0.0,
+                        min(
+                            1.0,
+                            (
+                                (anchor[0] - start[0]) * dx
+                                + (anchor[1] - start[1]) * dy
+                            )
+                            / length_sq,
+                        ),
+                    )
+                )
+                closest = (start[0] + amount * dx, start[1] + amount * dy)
+                distances.append(math.dist(anchor, closest))
+            self.assertLess(min(distances), 1e-9, feature)
+
+    def test_locked_image_is_served_by_frame_id(self):
+        response = self.client.get("/benchmark-images/video_1_000012")
+        try:
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.data.startswith(b"\x89PNG"))
+        finally:
+            response.close()
+        self.assertEqual(
+            self.client.get("/benchmark-images/not-a-frame").status_code, 404
+        )
+
+    def test_empty_annotation_has_locked_human_metadata(self):
+        annotation = self.empty_annotation()
+        self.assertEqual(annotation["frame_id"], self.frame["frame_id"])
+        self.assertEqual(annotation["image_sha256"], self.frame["sha256"])
+        self.assertEqual(annotation["coordinate_space"], "frame")
+        self.assertEqual(annotation["pass_id"], HUMAN_ANNOTATOR_PASS_ID)
+        self.assertEqual(
+            annotation["prompt_version"], HUMAN_ANNOTATOR_PROMPT_VERSION
+        )
+        self.assertEqual(annotation["features"], [])
+        self.assertEqual(annotation["skipped"], [])
+
+    def test_incomplete_draft_saves_but_cannot_finalize(self):
+        annotation = self.empty_annotation()
+        draft = self.save(annotation)
+        self.assertEqual(draft.status_code, 200)
+        self.assertTrue(draft.get_json()["problems"])
+        self.assertTrue(
+            (
+                self.benchmark_dir
+                / "run"
+                / "human"
+                / "drafts"
+                / "video_1_000012.json"
+            ).is_file()
+        )
+
+        final = self.save(annotation, finalize=True)
+        self.assertEqual(final.status_code, 422)
+        self.assertFalse(
+            (
+                self.benchmark_dir
+                / "run"
+                / "human"
+                / "video_1_000012.frame.json"
+            ).exists()
+        )
+
+    def test_complete_annotation_finalizes_and_updates_progress(self):
+        annotation = self.skip_all(self.empty_annotation())
+        response = self.save(annotation, finalize=True)
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertTrue(response.get_json()["finalized"])
+        final_path = (
+            self.benchmark_dir
+            / "run"
+            / "human"
+            / "video_1_000012.frame.json"
+        )
+        self.assertTrue(final_path.is_file())
+        self.assertEqual(
+            json.loads(final_path.read_text())["annotator_id"], "human-pri"
+        )
+        self.assertTrue(
+            self.client.get("/api/benchmark").get_json()["frames"][0]["complete"]
+        )
+        loaded = self.client.get(
+            "/api/benchmark/annotation/video_1_000012"
+        ).get_json()
+        self.assertEqual(loaded["source"], "final")
+        self.assertTrue(loaded["finalized"])
+
+    def test_human_trace_requires_four_straight_samples(self):
+        annotation = self.skip_all(
+            self.empty_annotation(), except_features={MarkingFeature.BASELINE}
+        )
+        annotation["features"] = [
+            {
+                "feature": "baseline",
+                "kind": "polyline",
+                "points": [{"x": 100, "y": 600}, {"x": 900, "y": 600}],
+                "visibility": "clear",
+                "uncertainty_px": 1,
+                "occluded_after": [],
+                "notes": "",
+            }
+        ]
+        response = self.save(annotation, finalize=True)
+        self.assertEqual(response.status_code, 422)
+        self.assertTrue(
+            any(
+                "requires at least 4" in problem
+                for problem in response.get_json()["problems"]
+            )
+        )
+
+    def test_frame_metadata_cannot_be_changed_even_in_a_draft(self):
+        annotation = self.empty_annotation()
+        annotation["image_sha256"] = "b" * 64
+        response = self.save(annotation)
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(
+            any(
+                "image_sha256" in problem
+                for problem in response.get_json()["problems"]
+            )
+        )
 
 
 class MigrationTests(unittest.TestCase):
