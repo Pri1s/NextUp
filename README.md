@@ -1,17 +1,12 @@
 # NextUp court keypoints
 
 Hand-labeling pipeline for basketball court keypoints (schema v3). Labeling
-conventions live in [`LABELING.md`](LABELING.md); the machine-readable schema
+conventions live in [`docs/LABELING.md`](docs/LABELING.md); the machine-readable schema
 is
 [`dataset/schemas/court_keypoints.v3.json`](dataset/schemas/court_keypoints.v3.json).
-Once you have some labels, [`TRAINING.md`](TRAINING.md) covers fine-tuning a
+Once you have some labels, [`docs/TRAINING.md`](docs/TRAINING.md) covers fine-tuning a
 pose model on them and reading the results.
 
-> **Two isolated workflows.** This repo is the court-keypoint *training
-> grounds* (everything below). The NBA game-analysis *engine* is walled off in
-> [`engine/`](engine/) and shares only the canonical schema via
-> [`contracts/`](contracts/) — see [`ENGINE.md`](ENGINE.md). The finished HS
-> pose model plugs into the same seat the NBA court model occupies.
 
 > **Superseded:** the reloc2-derived K1–K18 model and schema v2 are no longer
 > used — the model's point semantics were never confirmed. The weights and
@@ -60,7 +55,7 @@ python3 serve.py                     # then open http://127.0.0.1:8000
 
 - *Triage view* (per clip): click a frame to cycle pending → keep → skip, or
   use arrows with `K`/`S`/`U`. Aim for variety, not volume — see
-  [`LABELING.md`](LABELING.md).
+  [`docs/LABELING.md`](docs/LABELING.md).
 - *Orientation anchor* (once per clip): north is always the image-left basket.
   Find a frame where both baskets are discernible and lock the anchor; if no
   frame shows both ends, declare which end the anchor frame shows instead.
@@ -81,6 +76,40 @@ Do not run `extract_frames.py` while the server is up because both write the
 manifest.
 
 `python3 pipeline_manifest.py` prints current counts.
+
+### Milestone 1 painted-marking benchmark
+
+Milestone 1 is complete with six validated blind human references after the
+multimodal-agent synthetic precision gate failed. The tracked references and
+baseline reports live under `benchmark/references/nba_m1_v1_human*` and
+`benchmark/results/nba_m1_v1_human/`.
+
+The same local server includes the six-frame court-marking editor used to create
+and review those references:
+
+```bash
+.venv/bin/python serve.py \
+  --benchmark engine_out/benchmark/m1_openai_gpt56_v1
+```
+
+Open `http://127.0.0.1:8000/benchmark-label`. This mode traces visible painted
+centerlines rather than the pretrained dataset's fixed keypoints. It supports
+zoom/pan, ordered polyline and arc samples, explicit occlusion gaps, skip reasons,
+autosaved drafts, optional visible intersections, and strict benchmark-compatible
+export. See [`docs/BENCHMARK.md`](docs/BENCHMARK.md) for the methodology decision,
+labeling contract, recorded baseline metrics, limitations, and reproduction
+commands.
+
+### Milestone 2 authoritative marking geometry
+
+Milestone 2 is complete. Strict layout v2 converts the official NBA diagram's
+inside/outside dimensions and 2-inch paint width into one set of analytic
+painted-centerline primitives. Calibration visualization, benchmark geometry,
+glossary/reference output, synthetic paint, and future hybrid fitting use that
+same layout and content hash. Generic hybrid evidence/decision records are
+defined, but extraction and fitting behavior intentionally begin in later
+milestones. See
+[`docs/COURT_CALIBRATION_HYBRID_MARKINGS_PLAN.md`](docs/COURT_CALIBRATION_HYBRID_MARKINGS_PLAN.md).
 
 ## Keypoint semantics
 

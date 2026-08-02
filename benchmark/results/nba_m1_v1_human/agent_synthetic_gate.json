@@ -1,0 +1,60 @@
+{
+  "schema_version": "synthetic-gate-results-1.0.0",
+  "run_id": "m1_openai_gpt56_v1",
+  "scene_id": "synthetic_m1_gpt56_v1",
+  "prompt_version": "annotator-2.0.0",
+  "reasoning_effort": "high",
+  "image_detail": "original",
+  "thresholds": {
+    "median_px_max": 1.5,
+    "p95_px_max": 4.0,
+    "absolute_mean_signed_px_per_family_max": 0.75,
+    "invented_features_max": 0,
+    "complete_dispositions_required": true
+  },
+  "configurations": [
+    {
+      "model_id": "gpt-5.6-sol",
+      "role": "adjudicator_capability_preflight",
+      "status": "failed",
+      "annotation_locked_before_scoring": true,
+      "structural_repairs": [],
+      "metrics": {
+        "sample_count": 67,
+        "features_scored": 12,
+        "features_present_in_truth": 14,
+        "coverage": 0.8571428571428571,
+        "median_px": 1.054046211541317,
+        "p95_px": 6.100119978594675,
+        "max_px": 27.768093204065835,
+        "worst_absolute_mean_signed_px": 3.927691293074781,
+        "worst_signed_family": "midcourt_line",
+        "worst_signed_family_mean_signed_px": -3.927691293074781,
+        "invented_features": [],
+        "missing_dispositions": []
+      },
+      "checks": {
+        "median": "pass",
+        "p95": "fail",
+        "absolute_mean_signed_per_family": "fail",
+        "no_invented_features": "pass",
+        "complete_dispositions": "pass"
+      }
+    },
+    {
+      "model_id": "gpt-5.6-terra",
+      "role": "annotation_pass_configuration",
+      "status": "not_scored_stop_after_gpt-5.6-sol_failure",
+      "annotation_structurally_valid": true,
+      "annotation_locked": true,
+      "structural_repairs": [],
+      "metrics": null
+    }
+  ],
+  "decision": {
+    "qualified": false,
+    "stop_condition": "gpt-5.6-sol failed the synthetic p95 and signed-offset gates",
+    "real_annotation_passes_allowed": false,
+    "adjudication_allowed": false
+  }
+}

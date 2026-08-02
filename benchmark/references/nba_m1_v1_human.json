@@ -1,0 +1,72 @@
+{
+  "schema_version": "benchmark-reference-set-1.0.0",
+  "reference_id": "nba_m1_v1_human",
+  "manifest_id": "nba_m1_v1",
+  "authority": "single_human_reference",
+  "line_convention": "painted_centerline",
+  "frame_count": 6,
+  "feature_disposition_count_per_frame": 14,
+  "provenance": {
+    "reason": "The multimodal agent failed the frozen synthetic precision gate; the Milestone 1 stop condition required a human labeling workflow.",
+    "agent_gate_result": "benchmark/results/nba_m1_v1_human/agent_synthetic_gate.json",
+    "labeling_ui": "serve.py /benchmark-label",
+    "prompt_version": "human-labeler-1.0.0",
+    "pass_id": "human_reference"
+  },
+  "frames": [
+    {
+      "frame_id": "video_1_000012",
+      "path": "references/nba_m1_v1_human/video_1_000012.frame.json",
+      "sha256": "96434730584ae7794a88275446b9eb670e235e7e07d37bf2bb6ed3e5087d15fc",
+      "image_sha256": "9ccbea86d7bb2e46b357c274d7c1f479ef6ab7c78e60cc173124a7deca1a65e2",
+      "annotator_id": "human-pri",
+      "features_annotated": 11,
+      "features_skipped": 3
+    },
+    {
+      "frame_id": "video_1_000090",
+      "path": "references/nba_m1_v1_human/video_1_000090.frame.json",
+      "sha256": "afd11ea628f727e5e4ed1a40bd055d998640f341c1c37ab49c0a2fe8621ba917",
+      "image_sha256": "2780980ab4c665990871a3aad64fa58c2846648f086914b9425184224816eadd",
+      "annotator_id": "human-pri",
+      "features_annotated": 10,
+      "features_skipped": 4
+    },
+    {
+      "frame_id": "video_2_000018",
+      "path": "references/nba_m1_v1_human/video_2_000018.frame.json",
+      "sha256": "d9772669b8f34396f396b634b81fdf3ab1fdad83c1d001d0eabfba8c1ff73cb9",
+      "image_sha256": "27f61eaaa0bce4f0330299482e8fad8851985396af1fb966ae811b77358c9faa",
+      "annotator_id": "human-pri",
+      "features_annotated": 10,
+      "features_skipped": 4
+    },
+    {
+      "frame_id": "video_2_000141",
+      "path": "references/nba_m1_v1_human/video_2_000141.frame.json",
+      "sha256": "bc4679d3840640acf922f02e08648b6d7eb45f76e03a3e4ae882d3e33bd1f363",
+      "image_sha256": "5dc70de016fd0bfcd4e0dfa71295b9ed4b0da8f1aeee18f1f0a8e2d199a6f890",
+      "annotator_id": "human-pri",
+      "features_annotated": 11,
+      "features_skipped": 3
+    },
+    {
+      "frame_id": "video_3_000015",
+      "path": "references/nba_m1_v1_human/video_3_000015.frame.json",
+      "sha256": "0bde761168685c6972aa5b1a2f0ec2b86f337d8e205d5964ee85aa76b07aaed9",
+      "image_sha256": "23829bcbace4c9c4be901705f9385db5bf99b605f381602dcd05077008d840c7",
+      "annotator_id": "human-pri",
+      "features_annotated": 10,
+      "features_skipped": 4
+    },
+    {
+      "frame_id": "video_3_000146",
+      "path": "references/nba_m1_v1_human/video_3_000146.frame.json",
+      "sha256": "47f1f65a5a7923876c4f45a3bcad9026a649bda604c5f12487f4f56b2b93b50d",
+      "image_sha256": "2793420c7546b6acde3ff703222e2854ef04d0de8d245f0afc09d1abc473100d",
+      "annotator_id": "human-pri",
+      "features_annotated": 3,
+      "features_skipped": 11
+    }
+  ]
+}

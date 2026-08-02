@@ -1,10 +1,12 @@
-"""Local web app for triaging candidate frames and hand-labeling court keypoints.
+"""Local web app for hand-labeling court keypoints and benchmark markings.
 
 Serves two views over the shared manifest:
   - /triage/<clip_id>: thumbnail grid, mark frames keep/skip
   - /label/<clip_id>:  canvas editor to place canonical court keypoints on
                        kept frames; labels saved as per-frame JSON under
                        dataset/labels/
+  - /benchmark-label:  blind centerline editor for the locked Milestone 1
+                       court-marking benchmark
 
 Labeling is manual by default. --model optionally points at a pose model
 trained on THIS schema (a court_pose training run) to prefill points; models
@@ -24,6 +26,14 @@ from threading import Lock
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 
+from benchmark.glossary import feature_catalog, junction_catalog, reference_court
+from contracts.annotations import (
+    ANNOTATION_SCHEMA_VERSION,
+    LINE_CONVENTION,
+    FrameAnnotation,
+    validate as validate_annotation,
+)
+from contracts.court_layout import load_registered_layout
 from pipeline_manifest import (
     DEFAULT_DATASET_DIR,
     PROJECT_DIR,
@@ -35,6 +45,11 @@ from pipeline_manifest import (
 
 WEB_DIR = PROJECT_DIR / "web"
 KEYPOINT_SCHEMA_PATH = PROJECT_DIR / "dataset" / "schemas" / "court_keypoints.v3.json"
+DEFAULT_BENCHMARK_DIR = (
+    PROJECT_DIR / "engine_out" / "benchmark" / "m1_openai_gpt56_v1"
+)
+HUMAN_ANNOTATOR_PROMPT_VERSION = "human-labeler-1.0.0"
+HUMAN_ANNOTATOR_PASS_ID = "human_reference"
 NORTH_CONVENTION = "image_left_basket"
 SCHEMA_VERSION_PREFIX = "3."
 ORIENTATION_MODES = ("both_ends_visible", "declared")
@@ -119,10 +134,38 @@ def ends_conflicts(schema: dict, keypoints: list[dict], visible_ends: str) -> li
     ]
 
 
+def load_benchmark_export(benchmark_dir: Path) -> dict:
+    """Load and minimally validate the blind frame export used by the UI."""
+    path = benchmark_dir / "frames" / "frames.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"Benchmark frame export not found: {path}")
+    with open(path, "r", encoding="utf-8") as handle:
+        export = json.load(handle)
+    if export.get("frame_count") != len(export.get("frames", ())):
+        raise ValueError("Benchmark frame_count does not match frames.json")
+    if not export.get("frames"):
+        raise ValueError("Benchmark export contains no frames")
+    return export
+
+
+def human_annotation_problems(annotation: FrameAnnotation) -> list[str]:
+    """Precision rules specific to the human UI, beyond the base contract."""
+    problems = validate_annotation(annotation, require_complete=True)
+    for item in annotation.features:
+        minimum = 6 if item.kind == "arc" else 4
+        if len(item.points) < minimum:
+            problems.append(
+                f"{item.feature.value}: human reference tracing requires at least "
+                f"{minimum} observed samples"
+            )
+    return problems
+
+
 def build_app(
     dataset_dir: Path,
     model_path: Path | None = None,
     schema_path: Path = KEYPOINT_SCHEMA_PATH,
+    benchmark_dir: Path | None = None,
 ) -> Flask:
     app = Flask(__name__, static_folder=str(WEB_DIR / "static"))
     schema_expected = len(load_keypoint_schema(schema_path)["keypoints"])
@@ -132,8 +175,13 @@ def build_app(
         "manifest": load_manifest(Path(dataset_dir)),
         "model": None,
         "trained_frames": {},
+        "benchmark_dir": Path(benchmark_dir) if benchmark_dir is not None else None,
+        "benchmark_export": None,
     }
     state_lock = Lock()
+
+    if state["benchmark_dir"] is not None:
+        state["benchmark_export"] = load_benchmark_export(state["benchmark_dir"])
 
     if model_path is not None:
         from ultralytics import YOLO
@@ -218,6 +266,107 @@ def build_app(
     def page(name: str):
         return send_from_directory(WEB_DIR, name)
 
+    def benchmark_frame(frame_id: str) -> dict:
+        export = state["benchmark_export"]
+        if export is None:
+            abort(404, "No benchmark frame export configured")
+        for frame in export["frames"]:
+            if frame["frame_id"] == frame_id:
+                return frame
+        abort(404, f"Unknown benchmark frame: {frame_id}")
+
+    def human_label_dir() -> Path:
+        if state["benchmark_dir"] is None:
+            abort(404, "No benchmark frame export configured")
+        return state["benchmark_dir"] / "run" / "human"
+
+    def human_label_path(frame_id: str, *, draft: bool = False) -> Path:
+        benchmark_frame(frame_id)
+        if draft:
+            return human_label_dir() / "drafts" / f"{frame_id}.json"
+        return human_label_dir() / f"{frame_id}.frame.json"
+
+    def empty_human_annotation(frame: dict) -> dict:
+        return {
+            "schema_version": ANNOTATION_SCHEMA_VERSION,
+            "line_convention": LINE_CONVENTION,
+            "frame_id": frame["frame_id"],
+            "clip": frame["clip"],
+            "frame_index": frame["frame_index"],
+            "image_width": frame["width"],
+            "image_height": frame["height"],
+            "image_sha256": frame["sha256"],
+            "annotator_id": "human-pri",
+            "pass_id": HUMAN_ANNOTATOR_PASS_ID,
+            "prompt_version": HUMAN_ANNOTATOR_PROMPT_VERSION,
+            "coordinate_space": "frame",
+            "features": [],
+            "junctions": [],
+            "skipped": [],
+            "notes": "",
+        }
+
+    def validate_human_metadata(annotation: FrameAnnotation, frame: dict) -> list[str]:
+        expected = {
+            "frame_id": frame["frame_id"],
+            "clip": frame["clip"],
+            "frame_index": frame["frame_index"],
+            "image_width": frame["width"],
+            "image_height": frame["height"],
+            "image_sha256": frame["sha256"],
+            "pass_id": HUMAN_ANNOTATOR_PASS_ID,
+            "prompt_version": HUMAN_ANNOTATOR_PROMPT_VERSION,
+            "coordinate_space": "frame",
+        }
+        problems = []
+        for field, value in expected.items():
+            if getattr(annotation, field) != value:
+                problems.append(
+                    f"{field} does not match the locked benchmark "
+                    f"({getattr(annotation, field)!r} != {value!r})"
+                )
+        if not annotation.annotator_id.strip():
+            problems.append("annotator_id must not be empty")
+        return problems
+
+    def benchmark_api_payload() -> dict:
+        export = state["benchmark_export"]
+        if export is None:
+            abort(404, "No benchmark frame export configured")
+        layout = load_registered_layout(export["layout_id"])
+        labels = human_label_dir()
+        frames = []
+        for frame in export["frames"]:
+            frames.append(
+                {
+                    **frame,
+                    "image_url": f"/benchmark-images/{frame['frame_id']}",
+                    "complete": (labels / f"{frame['frame_id']}.frame.json").is_file(),
+                    "draft": (
+                        labels / "drafts" / f"{frame['frame_id']}.json"
+                    ).is_file(),
+                }
+            )
+        return {
+            "manifest_id": export["manifest_id"],
+            "layout_id": export["layout_id"],
+            "glossary_version": export["glossary_version"],
+            "frames": frames,
+            "features": feature_catalog(layout),
+            "junctions": junction_catalog(),
+            "reference_court": reference_court(layout),
+            "skip_reasons": [
+                "not_visible",
+                "out_of_frame",
+                "fully_occluded",
+                "too_faint",
+                "ambiguous_identity",
+            ],
+            "visibilities": ["clear", "faint", "partially_occluded"],
+            "prompt_version": HUMAN_ANNOTATOR_PROMPT_VERSION,
+            "pass_id": HUMAN_ANNOTATOR_PASS_ID,
+        }
+
     @app.get("/")
     def index():
         return page("index.html")
@@ -234,6 +383,113 @@ def build_app(
         if clip_id is not None and clip_id not in state["manifest"]["clips"]:
             abort(404, f"Unknown clip: {clip_id}")
         return page("label.html")
+
+    @app.get("/benchmark-label")
+    def benchmark_label_page():
+        if state["benchmark_export"] is None:
+            abort(404, "No benchmark frame export configured")
+        return page("benchmark-label.html")
+
+    @app.get("/api/benchmark")
+    def api_benchmark():
+        return jsonify(benchmark_api_payload())
+
+    @app.get("/api/benchmark/annotation/<frame_id>")
+    def api_get_benchmark_annotation(frame_id: str):
+        frame = benchmark_frame(frame_id)
+        final_path = human_label_path(frame_id)
+        draft_path = human_label_path(frame_id, draft=True)
+        draft_is_newer = (
+            draft_path.is_file()
+            and (
+                not final_path.is_file()
+                or draft_path.stat().st_mtime_ns > final_path.stat().st_mtime_ns
+            )
+        )
+        if draft_is_newer:
+            path, source = draft_path, "draft"
+        elif final_path.is_file():
+            path, source = final_path, "final"
+        else:
+            return jsonify(
+                {
+                    "source": "empty",
+                    "finalized": False,
+                    "annotation": empty_human_annotation(frame),
+                }
+            )
+        with open(path, "r", encoding="utf-8") as handle:
+            annotation = json.load(handle)
+        return jsonify(
+            {
+                "source": source,
+                "finalized": final_path.is_file() and source == "final",
+                "annotation": annotation,
+            }
+        )
+
+    @app.post("/api/benchmark/annotation/<frame_id>")
+    def api_save_benchmark_annotation(frame_id: str):
+        frame = benchmark_frame(frame_id)
+        body = request.get_json(force=True)
+        finalize = bool(body.get("finalize"))
+        try:
+            annotation = FrameAnnotation.from_dict(body.get("annotation", {}))
+        except (KeyError, TypeError, ValueError) as error:
+            return jsonify({"error": f"Invalid annotation: {error}", "problems": [str(error)]}), 400
+
+        metadata_problems = validate_human_metadata(annotation, frame)
+        if metadata_problems:
+            return jsonify(
+                {
+                    "error": "Annotation metadata does not match the locked frame.",
+                    "problems": metadata_problems,
+                }
+            ), 400
+
+        if finalize:
+            problems = human_annotation_problems(annotation)
+        else:
+            # Drafts remain writable while incomplete, but returning the same
+            # readiness problems lets the UI explain what still blocks finalizing.
+            problems = human_annotation_problems(annotation)
+
+        if problems and finalize:
+            return jsonify(
+                {
+                    "error": "Frame is not ready to finalize.",
+                    "problems": problems,
+                }
+            ), 422
+
+        payload = annotation.as_dict()
+        draft_path = human_label_path(frame_id, draft=True)
+        draft_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(draft_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
+            handle.write("\n")
+
+        if finalize:
+            final_path = human_label_path(frame_id)
+            final_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(final_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2)
+                handle.write("\n")
+
+        return jsonify(
+            {
+                "frame_id": frame_id,
+                "saved": True,
+                "finalized": finalize,
+                "problems": problems,
+            }
+        )
+
+    @app.get("/benchmark-images/<frame_id>")
+    def serve_benchmark_image(frame_id: str):
+        frame = benchmark_frame(frame_id)
+        frames_dir = state["benchmark_dir"] / "frames"
+        return send_from_directory(frames_dir, frame["path"])
 
     @app.get("/api/clips")
     def api_clips():
@@ -539,7 +795,7 @@ def build_app(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Serve the triage and keypoint labeling web app."
+        description="Serve the keypoint and court-marking labeling web app."
     )
     parser.add_argument(
         "--dataset",
@@ -553,16 +809,30 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional pose model trained on this schema, used to prefill points",
     )
+    parser.add_argument(
+        "--benchmark",
+        type=Path,
+        default=DEFAULT_BENCHMARK_DIR,
+        help=(
+            "Blind benchmark namespace for /benchmark-label "
+            f"(default: {DEFAULT_BENCHMARK_DIR})"
+        ),
+    )
     parser.add_argument("--port", type=int, default=8000)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    app = build_app(args.dataset, model_path=args.model)
+    app = build_app(
+        args.dataset,
+        model_path=args.model,
+        benchmark_dir=args.benchmark,
+    )
     tally = counts(load_manifest(args.dataset))
     print(f"Loaded manifest: {tally['clips']} clip(s), {tally['candidates']} frames")
     print(f"Open http://127.0.0.1:{args.port}")
+    print(f"Benchmark labeler: http://127.0.0.1:{args.port}/benchmark-label")
     app.run(host="127.0.0.1", port=args.port, debug=False)
 
 

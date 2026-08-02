@@ -1,0 +1,189 @@
+{
+  "schema_version": "court-annotation-1.0.0",
+  "line_convention": "painted_centerline",
+  "frame_id": "video_3_000146",
+  "clip": "input_videos/video_3.mp4",
+  "frame_index": 146,
+  "image_width": 1280,
+  "image_height": 720,
+  "image_sha256": "2793420c7546b6acde3ff703222e2854ef04d0de8d245f0afc09d1abc473100d",
+  "annotator_id": "human-pri",
+  "pass_id": "human_reference",
+  "prompt_version": "human-labeler-1.0.0",
+  "coordinate_space": "frame",
+  "features": [
+    {
+      "feature": "midcourt_line",
+      "kind": "polyline",
+      "points": [
+        {
+          "x": 570.4135328389831,
+          "y": 322.52204713983053
+        },
+        {
+          "x": 578.7660884533898,
+          "y": 358.318657309322
+        },
+        {
+          "x": 588.3118379237288,
+          "y": 399.4847722457627
+        },
+        {
+          "x": 596.0677966101695,
+          "y": 440.05422404661016
+        },
+        {
+          "x": 607.4034030720339,
+          "y": 496.135593220339
+        },
+        {
+          "x": 619.3356064618644,
+          "y": 549.8305084745763
+        },
+        {
+          "x": 626.4949020127119,
+          "y": 596.9627251059322
+        },
+        {
+          "x": 636.0406514830509,
+          "y": 629.1796875
+        }
+      ],
+      "visibility": "clear",
+      "uncertainty_px": 1.0,
+      "occluded_after": [],
+      "notes": ""
+    },
+    {
+      "feature": "three_point_arc",
+      "kind": "arc",
+      "points": [
+        {
+          "x": 13.17966267213983,
+          "y": 387.5525688559322
+        },
+        {
+          "x": 48.37965936175848,
+          "y": 404.2576138771187
+        },
+        {
+          "x": 75.82373046875,
+          "y": 435.8779793432203
+        },
+        {
+          "x": 82.98305084745763,
+          "y": 464.5152277542373
+        },
+        {
+          "x": 73.43728482521186,
+          "y": 492.55594544491527
+        },
+        {
+          "x": 52.55592889300848,
+          "y": 518.2101430084746
+        },
+        {
+          "x": 4.230508060778602,
+          "y": 554.6034163135594
+        }
+      ],
+      "visibility": "clear",
+      "uncertainty_px": 1.0,
+      "occluded_after": [],
+      "notes": ""
+    },
+    {
+      "feature": "sideline_far",
+      "kind": "polyline",
+      "points": [
+        {
+          "x": 34.65762794623941,
+          "y": 305.81693591101697
+        },
+        {
+          "x": 106.25084414724576,
+          "y": 307.6067929025424
+        },
+        {
+          "x": 199.32203389830508,
+          "y": 306.4135659427966
+        },
+        {
+          "x": 300.7457627118644,
+          "y": 308.7999867584746
+        },
+        {
+          "x": 395.6067929025424,
+          "y": 307.6067929025424
+        },
+        {
+          "x": 479.13221663135596,
+          "y": 307.0101628707627
+        }
+      ],
+      "visibility": "clear",
+      "uncertainty_px": 1.0,
+      "occluded_after": [],
+      "notes": ""
+    }
+  ],
+  "junctions": [],
+  "skipped": [
+    {
+      "feature": "baseline",
+      "reason": "not_visible",
+      "notes": ""
+    },
+    {
+      "feature": "lane_edge_far",
+      "reason": "not_visible",
+      "notes": ""
+    },
+    {
+      "feature": "lane_edge_near",
+      "reason": "not_visible",
+      "notes": ""
+    },
+    {
+      "feature": "free_throw_line",
+      "reason": "not_visible",
+      "notes": ""
+    },
+    {
+      "feature": "free_throw_circle_far_half",
+      "reason": "not_visible",
+      "notes": ""
+    },
+    {
+      "feature": "free_throw_circle_near_half",
+      "reason": "not_visible",
+      "notes": ""
+    },
+    {
+      "feature": "three_point_corner_near",
+      "reason": "not_visible",
+      "notes": ""
+    },
+    {
+      "feature": "three_point_corner_far",
+      "reason": "not_visible",
+      "notes": ""
+    },
+    {
+      "feature": "sideline_near",
+      "reason": "not_visible",
+      "notes": ""
+    },
+    {
+      "feature": "center_circle",
+      "reason": "not_visible",
+      "notes": ""
+    },
+    {
+      "feature": "restricted_area_arc",
+      "reason": "not_visible",
+      "notes": ""
+    }
+  ],
+  "notes": ""
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": "benchmark-prompts-1.0.0",
+  "prompts": [
+    {
+      "role": "annotator",
+      "version": "annotator-2.0.0",
+      "path": "court-annotator.md",
+      "sha256": "cd73d6b267729d9f2f7f29790fd4c515b12991b910f238e0ede758c82a22deb1"
+    },
+    {
+      "role": "adjudicator",
+      "version": "adjudicator-2.0.0",
+      "path": "court-adjudicator.md",
+      "sha256": "7a9c3382062521e302ff60c43e1eae011714be673bad21f77db89620690397f0"
+    }
+  ]
+}

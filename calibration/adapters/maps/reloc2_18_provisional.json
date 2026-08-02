@@ -1,0 +1,80 @@
+{
+  "map_id": "reloc2_18_provisional",
+  "schema_version": "evidence-map-1.0.0",
+  "status": "provisional",
+  "is_verified_map": false,
+  "requires_human_verification": true,
+  "notice": [
+    "PROVISIONAL EVIDENCE MAP - NOT a verified index-to-landmark schema.",
+    "The Phase 0 gate has NOT been cleared. These groupings come from an automated first-pass review (slot_review.first_pass.json) that no human has signed off.",
+    "Entries here describe which slots provide EVIDENCE for a landmark, weighted and pooled. They are not assertions of fixed slot identity.",
+    "Slots omitted from 'groups' are deliberately unmapped. Do not add an entry for a slot without evidence and a human decision."
+  ],
+  "weights_sha256": "f6263105e5c2338fafcfd5a6fefd7d1d441e87364635e918dfdbb849f2df1377",
+  "keypoint_count": 18,
+  "frame_of_reference": "visible_end_half_court",
+  "end_identity": "unresolved",
+
+  "groups": [
+    {
+      "landmark_id": "baseline_sideline_far",
+      "slots": [0, 15],
+      "tier": "confident",
+      "evidence": "video_2 f47,68,119,148,155; consistent in video_1 and video_3. Median pair separation 6-8 px across all three clips."
+    },
+    {
+      "landmark_id": "three_point_baseline_far",
+      "slots": [1, 14],
+      "tier": "confident",
+      "evidence": "video_2 f47,68,119,148,155; median pair separation 8-9 px."
+    },
+    {
+      "landmark_id": "lane_baseline_far",
+      "slots": [2, 13],
+      "tier": "confident",
+      "evidence": "video_2 f47,68,119,148,155; median pair separation 5-6 px."
+    },
+    {
+      "landmark_id": "lane_free_throw_far",
+      "slots": [8, 16],
+      "tier": "confident",
+      "evidence": "video_2 f47,68,119,148,155; tightest pair, median separation 3-4 px."
+    },
+    {
+      "landmark_id": "lane_free_throw_near",
+      "slots": [9, 17],
+      "tier": "confident",
+      "evidence": "video_2 f47,68,119,148,155; median pair separation 3-6 px."
+    },
+    {
+      "landmark_id": "midcourt_sideline_near",
+      "slots": [6],
+      "tier": "probable",
+      "evidence": "No support in video_2 (never above gate, clamped off-frame). video_1 f36,41,51,60 and video_3 f146 only. Excluded by default policy."
+    },
+    {
+      "landmark_id": "midcourt_sideline_far",
+      "slots": [7],
+      "tier": "probable",
+      "evidence": "No support in video_2. video_1 f26,36,46,60 and video_3 f136,146,156 at confidence 0.98-1.00. Excluded by default policy."
+    }
+  ],
+
+  "rejected": [
+    {
+      "slots": [3, 12],
+      "reason": "ambiguous",
+      "detail": "Two mutually exclusive readings selected by court orientation: free-throw-circle apex in image-right views, lane/baseline corner in image-left views. Assigning either is silently wrong on the other half of the footage. Deliberately given no landmark id."
+    },
+    {
+      "slots": [4, 10],
+      "reason": "unusable",
+      "detail": "Never exceeds 0.29 confidence in any clip; predictions sit off-frame or clamped. No stable referent observed."
+    },
+    {
+      "slots": [5, 11],
+      "reason": "unusable",
+      "detail": "Never exceeds 0.29 confidence in any clip. No stable referent observed."
+    }
+  ]
+}
