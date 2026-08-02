@@ -263,6 +263,39 @@ def score_frame(
     )
 
 
+def score_calibration_entry(
+    annotation: FrameAnnotation,
+    entry: dict,
+    layout: HalfCourtLayout,
+    *,
+    include_held_out: bool = True,
+) -> FrameScore:
+    """Score a stored transform only under the exact geometry that produced it."""
+    stored_id = entry.get("layout_id")
+    stored_hash = entry.get("layout_hash")
+    expected_hash = layout.content_hash()
+    if stored_id != layout.layout_id:
+        raise ValueError(
+            f"calibration layout_id {stored_id!r} does not match scoring layout "
+            f"{layout.layout_id!r}"
+        )
+    if not stored_hash:
+        raise ValueError("stored calibration has no layout_hash; mixed-layout scoring is unsafe")
+    if stored_hash != expected_hash:
+        raise ValueError(
+            f"calibration layout_hash {stored_hash} does not match "
+            f"{layout.layout_id} hash {expected_hash}"
+        )
+    return score_frame(
+        annotation,
+        entry.get("h_court_to_image"),
+        entry.get("h_image_to_court"),
+        layout,
+        status=entry.get("status", "UNKNOWN"),
+        include_held_out=include_held_out,
+    )
+
+
 def load_calibration_transforms(path: Path | str) -> dict[str, dict]:
     """Read ``calibrations.jsonl`` into per-frame transforms, keyed by frame id.
 
@@ -282,8 +315,11 @@ def load_calibration_transforms(path: Path | str) -> dict[str, dict]:
             index = int(calibration["frame_index"])
             matrix = calibration.get("h_court_to_image")
             inverse = calibration.get("h_image_to_court")
+            provenance = calibration.get("provenance") or {}
             transforms[f"{clip}_{index:06d}"] = {
                 "status": calibration.get("status", "UNKNOWN"),
+                "layout_id": calibration.get("layout_id") or provenance.get("layout_id"),
+                "layout_hash": provenance.get("layout_hash"),
                 "h_court_to_image": np.array(matrix, dtype=np.float64) if matrix else None,
                 "h_image_to_court": np.array(inverse, dtype=np.float64) if inverse else None,
             }

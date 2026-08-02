@@ -38,14 +38,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
 
+from .markings import LINE_CONVENTION, FeatureKind, MarkingFeature
+
 ANNOTATION_SCHEMA_VERSION = "court-annotation-1.0.0"
 
-#: What a coordinate means. Frozen into every file so a later convention change
-#: cannot silently reinterpret annotations made under this one.
-LINE_CONVENTION = "painted_centerline"
-
+#: What a coordinate means. Re-exported for annotation API compatibility.
 CoordinateSpace = Literal["crop", "frame"]
-FeatureKind = Literal["polyline", "arc"]
 
 #: A polyline needs two points to exist. An arc needs enough to be distinguishable
 #: from a straight run -- three can be fitted by any line with noise, five cannot.
@@ -57,45 +55,6 @@ MIN_ARC_POINTS = 5
 #: mislabelled feature or points sampled off two different markings.
 STRAIGHTNESS_TOLERANCE_PX = 3.0
 
-
-class MarkingFeature(str, Enum):
-    """Painted runs an annotator may trace.
-
-    Named camera-relative -- "far" is the sideline away from the camera, "near" the
-    one toward it -- matching ``HalfCourtLandmark`` in ``court_layout``. No name
-    encodes north/south, because painted geometry is symmetric and cannot resolve
-    it (design plan §5.6).
-    """
-
-    BASELINE = "baseline"
-    SIDELINE_FAR = "sideline_far"
-    SIDELINE_NEAR = "sideline_near"
-    LANE_EDGE_FAR = "lane_edge_far"
-    LANE_EDGE_NEAR = "lane_edge_near"
-    FREE_THROW_LINE = "free_throw_line"
-    FREE_THROW_CIRCLE_FAR_HALF = "free_throw_circle_far_half"
-    FREE_THROW_CIRCLE_NEAR_HALF = "free_throw_circle_near_half"
-    THREE_POINT_CORNER_FAR = "three_point_corner_far"
-    THREE_POINT_CORNER_NEAR = "three_point_corner_near"
-    THREE_POINT_ARC = "three_point_arc"
-    RESTRICTED_AREA_ARC = "restricted_area_arc"
-    MIDCOURT_LINE = "midcourt_line"
-    CENTER_CIRCLE = "center_circle"
-
-    @property
-    def kind(self) -> FeatureKind:
-        return "arc" if self in _CURVED_FEATURES else "polyline"
-
-
-_CURVED_FEATURES = frozenset(
-    {
-        MarkingFeature.FREE_THROW_CIRCLE_FAR_HALF,
-        MarkingFeature.FREE_THROW_CIRCLE_NEAR_HALF,
-        MarkingFeature.THREE_POINT_ARC,
-        MarkingFeature.RESTRICTED_AREA_ARC,
-        MarkingFeature.CENTER_CIRCLE,
-    }
-)
 
 #: Families held out of hybrid fitting and used only for validation (§4.3, §8.3).
 #: Named here so the benchmark and the fitter cannot disagree about which they are.

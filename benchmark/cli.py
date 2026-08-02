@@ -238,6 +238,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--baseline", default=None, help="an earlier score report to compare against"
     )
 
+    extraction = subparsers.add_parser(
+        "score-extraction",
+        help="Score serialized marking-shadow evidence against blind human references.",
+    )
+    extraction.add_argument("--records", required=True, help="marking_shadow/records.jsonl")
+    extraction.add_argument("--references", required=True, help="directory of frame-space human references")
+    extraction.add_argument("--out", default=None, help="write the full extraction report as JSON")
+
+    hybrid = subparsers.add_parser(
+        "score-hybrid", help="Score serialized keypoint and hybrid shadow transforms against blind references."
+    )
+    hybrid.add_argument("--records", required=True, help="hybrid_shadow/records.jsonl")
+    hybrid.add_argument("--references", required=True, help="directory of frame-space human references")
+    hybrid.add_argument("--layout", default="nba_halfcourt")
+    hybrid.add_argument("--out", default=None, help="write the full hybrid report as JSON")
+
     return parser
 
 
@@ -704,7 +720,7 @@ def command_score(args: argparse.Namespace) -> int:
     from .metrics import (
         compare_summaries,
         load_calibration_transforms,
-        score_frame,
+        score_calibration_entry,
         summarize_scores,
     )
 
@@ -730,15 +746,11 @@ def command_score(args: argparse.Namespace) -> int:
         if entry is None:
             missing.append(annotation.frame_id)
             continue
-        scores.append(
-            score_frame(
-                annotation,
-                entry["h_court_to_image"],
-                entry["h_image_to_court"],
-                layout,
-                status=entry["status"],
-            )
-        )
+        try:
+            scores.append(score_calibration_entry(annotation, entry, layout))
+        except ValueError as error:
+            print(f"refusing to score {annotation.frame_id}: {error}")
+            return 1
 
     if missing:
         print("selected reference frames missing from the supplied calibration runs:")
@@ -793,6 +805,37 @@ def command_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_score_extraction(args: argparse.Namespace) -> int:
+    from .extraction import score_extraction
+
+    report = score_extraction(args.records, args.references)
+    print(f"frames: {len(report['frames'])}  records: {report['records']}")
+    print(f"wrong three-point accepts: {report['wrong_three_point_accepts']}")
+    print(f"wrong-identity accepts: {report['wrong_identity_accepts']}")
+    print(f"skipped/unannotated accepts: {report['skipped_or_unannotated_accepts']}")
+    print(f"sample median: {report['all_sample_median_px']:.2f}px  p95: {report['all_sample_p95_px']:.2f}px")
+    if args.out:
+        path = Path(args.out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(report, indent=2, allow_nan=True) + "\n", encoding="utf-8")
+        print(f"wrote {path}")
+    return 0
+
+
+def command_score_hybrid(args: argparse.Namespace) -> int:
+    from .hybrid import score_hybrid
+
+    report = score_hybrid(args.records, args.references, load_registered_layout(args.layout))
+    print(f"records: {report['records']}  paired frames: {len(report['frame_sets']['paired'])}")
+    print(f"acceptance: {report['acceptance']}")
+    if args.out:
+        path = Path(args.out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(report, indent=2, allow_nan=True) + "\n", encoding="utf-8")
+        print(f"wrote {path}")
+    return 0
+
+
 COMMANDS = {
     "export-frames": command_export_frames,
     "init-run": command_init_run,
@@ -800,6 +843,8 @@ COMMANDS = {
     "score-truth": command_score_truth,
     "consensus": command_consensus,
     "score": command_score,
+    "score-extraction": command_score_extraction,
+    "score-hybrid": command_score_hybrid,
     "verify-frames": command_verify_frames,
     "verify-prompts": command_verify_prompts,
     "crop": command_crop,

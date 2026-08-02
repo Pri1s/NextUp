@@ -1,6 +1,6 @@
 # Interim Hybrid Court Calibration — Architecture and Implementation Plan
 
-**Status:** Milestone 1 complete; Milestones 2–6 remain planned.
+**Status:** Milestones 1–2 complete; Milestones 3–6 remain planned.
 **Scope:** The existing NBA half-court calibration engine and the intended NBA source clips under `input_videos/video_1.mp4`, `video_2.mp4`, and `video_3.mp4`. Unrelated sample-frame datasets are outside the evidence base and validation scope of this plan.
 **Priority:** Accuracy and false-accept prevention over calibration coverage or runtime.
 
@@ -503,40 +503,77 @@ claim to exploratory shadow-mode development.
 **Stop condition outcome:** triggered. Agent labels were rejected and replaced by
 validated blind human references rather than weakened precision thresholds.
 
-### Milestone 2 — Make marking geometry authoritative
+### Milestone 2 — Make marking geometry authoritative — COMPLETE
 
-Move all calibration-relevant marking geometry into the court layout layer:
+All calibration-relevant marking geometry now belongs to strict layout schema
+`half-court-layout-2.0.0`:
 
-- three-point radius and corner transition;
-- free-throw circle;
-- center circle;
-- restricted area;
-- line width and coordinate convention.
+- the official 2025–26 NBA Rule 1 source measurements retain their published
+  inside/outside conventions;
+- the two-inch stripe width is converted once into painted-centerline landmarks
+  and analytic straight/arc primitives;
+- three-point straights/arc, lane, free-throw and center circles, restricted area,
+  boundaries, topology, deterministic sampling, and physical widths share one
+  layout source;
+- visualization, benchmark scoring/reference output, glossary text, and synthetic
+  paint consume those primitives rather than independent NBA constants; and
+- layout serialization/hash provenance covers source conventions and all derived
+  geometry.
 
-Both `calibration/viz.py` and the hybrid fitter must consume the same geometry.
+Shared model-neutral evidence, assignment, diagnostic, candidate-quality, gate,
+and selection records provide strict JSON round trips and contain no model slot
+indices. Extraction, fitting, and candidate-selection behavior remain intentionally
+unimplemented until later milestones.
 
-Define generic records for:
+The v1→v2 coordinate/hash change is deliberate: v1 treated several published edge
+dimensions as centerlines. Benchmark scoring now rejects a stored transform whose
+layout hash does not match, and the completed Milestone 1 reports remain immutable
+historical v1 artifacts rather than being silently rescored under v2.
 
-- unlabeled marking evidence;
-- marking assignments;
-- candidate quality;
-- selection decisions.
+**Completion evidence:** `contracts/layouts/nba_halfcourt.json`,
+`contracts/markings.py`, `contracts/hybrid_types.py`, layout/record/visualization
+unit tests, and the passing repository test suite.
 
-**Done when:** rendering and fitting use one layout source and nothing in the marking engine knows model slot numbers.
+**Done condition:** rendering and future fitting inputs use one layout source and
+nothing in the marking contracts knows model slot numbers.
 
-### Milestone 3 — High-precision extraction in shadow mode
+### Milestone 3 — High-precision extraction in shadow mode — IMPLEMENTED
 
-Implement extraction and association for:
+The opt-in `calibrate-frames --marking-shadow` path now records a separate M3
+namespace under `marking_shadow/`. It performs static-frame, polarity-independent
+multiscale Hessian/Steger-style ridge localization, paired-gradient and stripe-
+width checks, deterministic fragment IDs/resampling, model-seeded competition
+against all 14 layout primitives, decoy rejection, topology readiness, and
+explicit abstentions for every ineligible baseline frame. The shadow path verifies
+the detector checkpoint against the evidence-map hash before analysis, accepts
+only the `DEGRADED`/five-inlier/`weak_conditioning:*` seed class, and never writes
+to or mutates `calibrations.jsonl`.
 
-1. lane/free-throw straight geometry;
-2. the full three-point marking;
-3. the free-throw circle as held-out validation.
+`marking_shadow/run.json`, `records.jsonl`, raw-evidence overlays, and association
+overlays carry layout/config/mask provenance. Optional exact-size caller masks
+are accepted with nonzero pixels meaning exclusion; no automatic mask producer is
+used. `benchmark.cli score-extraction` consumes only serialized shadow contracts
+and blind human references, including skipped-feature false accepts and
+occlusion-aware reference segments. The scoring implementation is deliberately
+outside `calibration/` so runtime extraction cannot tune itself against benchmark
+modules.
 
-Produce evidence overlays and metrics without changing the selected calibration.
+The locked offline search surface is exposed by
+`calibration.markings.predefined_variants()`: ridge-response percentiles 90, 94,
+and 97 crossed with strict, balanced, and coverage association presets. The
+selected fold configuration hash must be frozen before scoring its held-out
+clip; no runtime shadow record may select a candidate or fit a transform.
 
-**Kill criterion:** if accepted three-point evidence cannot achieve high precision on held-out frames, stop rather than weakening rejection thresholds.
+The numeric six-frame/out-of-fold decision remains a separate locked evaluation
+step. If it cannot meet the precision gates, the milestone is killed; thresholds
+are not weakened to obtain a pass. Results belong under the new
+`benchmark/results/nba_m3_v1/` namespace and must not overwrite the immutable M1
+reports.
 
 ### Milestone 4 — Hybrid refinement in shadow mode
+
+**IMPLEMENTED in code; numeric evaluation remains gated on the separate P0/P1
+run.**
 
 Add bounded, primitive-balanced joint refinement. Store:
 

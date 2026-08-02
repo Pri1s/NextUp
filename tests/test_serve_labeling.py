@@ -369,23 +369,26 @@ class BenchmarkLabelingTests(unittest.TestCase):
         self.assertTrue(all(item["description"] for item in payload["features"]))
         self.assertEqual(payload["pass_id"], HUMAN_ANNOTATOR_PASS_ID)
         reference = payload["reference_court"]
-        self.assertEqual(reference["half_length"], 47.0)
-        self.assertEqual(reference["width"], 50.0)
+        self.assertAlmostEqual(reference["half_length"], 47 + 1 / 12)
+        self.assertAlmostEqual(reference["width"], 50 + 2 / 12)
         self.assertEqual(set(reference["markings"]), {item.value for item in MarkingFeature})
         self.assertEqual(
             set(reference["label_anchors"]), {item.value for item in MarkingFeature}
         )
-        self.assertEqual(reference["markings"]["baseline"], [[0.0, 0.0], [0.0, 50.0]])
+        self.assertAlmostEqual(reference["markings"]["baseline"][0][0], 0.0)
+        self.assertAlmostEqual(reference["markings"]["baseline"][1][1], 50 + 2 / 12)
         self.assertGreater(len(reference["markings"]["three_point_arc"]), 20)
         anchors = reference["label_anchors"]
-        self.assertEqual(anchors["baseline"], [0.0, 25.0])
-        self.assertEqual(anchors["free_throw_line"], [19.0, 25.0])
-        self.assertAlmostEqual(anchors["free_throw_circle_far_half"][0], 25.0, places=2)
-        self.assertAlmostEqual(anchors["free_throw_circle_far_half"][1], 25.0, places=9)
-        self.assertAlmostEqual(anchors["free_throw_circle_near_half"][0], 13.0, places=2)
-        self.assertAlmostEqual(anchors["free_throw_circle_near_half"][1], 25.0, places=9)
-        self.assertAlmostEqual(anchors["restricted_area_arc"][0], 9.25, places=2)
-        self.assertAlmostEqual(anchors["restricted_area_arc"][1], 25.0, places=9)
+        self.assertAlmostEqual(anchors["baseline"][0], 0.0)
+        self.assertAlmostEqual(anchors["baseline"][1], 25 + 1 / 12)
+        self.assertAlmostEqual(anchors["free_throw_line"][0], 19.0)
+        self.assertAlmostEqual(anchors["free_throw_line"][1], 25 + 1 / 12)
+        self.assertAlmostEqual(anchors["free_throw_circle_far_half"][0], 24 + 11 / 12, places=6)
+        self.assertAlmostEqual(anchors["free_throw_circle_far_half"][1], 25 + 1 / 12, places=9)
+        self.assertAlmostEqual(anchors["free_throw_circle_near_half"][0], 13 + 1 / 12, places=6)
+        self.assertAlmostEqual(anchors["free_throw_circle_near_half"][1], 25 + 1 / 12, places=9)
+        self.assertAlmostEqual(anchors["restricted_area_arc"][0], 9 + 5 / 12, places=6)
+        self.assertAlmostEqual(anchors["restricted_area_arc"][1], 25 + 1 / 12, places=9)
         self.assertLess(
             anchors["restricted_area_arc"][0],
             anchors["free_throw_circle_near_half"][0],

@@ -1,33 +1,96 @@
 {
   "layout_id": "nba_halfcourt",
-  "schema_version": "half-court-layout-1.0.0",
-  "rule_set": "NBA",
-  "source": "NBA Official Rule Book, Rule 1 (Court Dimensions)",
+  "schema_version": "half-court-layout-2.0.0",
+  "rule_set": "NBA 2025-26",
+  "source": {
+    "title": "Official 2025-26 NBA Playing Rules, Rule No. 1, court diagram (page 8)",
+    "url": "https://ak-static.cms.nba.com/wp-content/uploads/sites/4/2025/10/Official-2025-26-NBA-Playing-Rules.pdf"
+  },
   "units": "feet",
   "frame_of_reference": "visible_end_half_court",
+  "line_convention": "painted_centerline",
   "notes": [
-    "Origin sits at the visible baseline x far sideline. +X runs toward midcourt, +Y toward the near (camera-side) sideline.",
-    "Court end (north/south) is deliberately unmodelled: nothing has established which end a detection belongs to.",
-    "Full court is 94 x 50 ft; half_length is 47.0."
+    "Origin is the visible baseline x far-sideline painted-centerline junction; +X runs toward midcourt and +Y toward the near sideline.",
+    "All ordinary lines are two inches wide. Each source value retains the diagram edge convention and a signed half-stripe conversion to canonical centerline geometry.",
+    "The three-foot corner gap is from the sideline inside edge to the three-point line outside edge, equivalent to the diagram's 22-foot outside basket distance."
   ],
-  "dimensions": {
-    "half_length": 47.0,
-    "width": 50.0
-  },
-  "lane": {
-    "shape": "rectangle",
-    "width": 16.0,
-    "free_throw_distance": 19.0
-  },
-  "basket": {
-    "center_from_baseline": 5.25
-  },
-  "three_point": {
-    "radius": 23.75,
-    "corner_inset": 3.0,
-    "corner_straight": true
-  },
-  "free_throw_circle": {
-    "radius": 6.0
+  "measurements": {
+    "line_width": {
+      "value": 2.0,
+      "unit": "inches",
+      "reference": "stripe_width",
+      "centerline_offset_half_widths": 0,
+      "diagram_label": "ALL LINES SHALL BE 2 INCHES WIDE (NEUTRAL ZONES EXCLUDED)"
+    },
+    "half_length": {
+      "value": 47.0,
+      "unit": "feet",
+      "reference": "inside_edge",
+      "centerline_offset_half_widths": 1,
+      "diagram_label": "LENGTH 94 FEET (inside), halved from baseline inside edge to division-line center"
+    },
+    "width": {
+      "value": 50.0,
+      "unit": "feet",
+      "reference": "inside_edge",
+      "centerline_offset_half_widths": 2,
+      "diagram_label": "WIDTH 50 FEET (inside)"
+    },
+    "lane_width": {
+      "value": 16.0,
+      "unit": "feet",
+      "reference": "outside_edge",
+      "centerline_offset_half_widths": -2,
+      "diagram_label": "16 FEET (OUTSIDE)"
+    },
+    "free_throw_distance": {
+      "value": 19.0,
+      "unit": "feet",
+      "reference": "outside_edge",
+      "centerline_offset_half_widths": 0,
+      "diagram_label": "19 FEET TO FREE THROW LINE (OUTSIDE); baseline-center to line-center offsets cancel"
+    },
+    "basket_from_baseline": {
+      "value": 5.25,
+      "unit": "feet",
+      "reference": "inside_edge",
+      "centerline_offset_half_widths": 1,
+      "diagram_label": "5 FEET 3 IN. from baseline inside edge to basket center"
+    },
+    "three_point_corner_inset": {
+      "value": 3.0,
+      "unit": "feet",
+      "reference": "outside_edge",
+      "centerline_offset_half_widths": 2,
+      "diagram_label": "3 FEET from sideline inside edge to three-point line outside edge (22 FEET OUTSIDE from basket)"
+    },
+    "three_point_radius": {
+      "value": 23.75,
+      "unit": "feet",
+      "reference": "outside_edge",
+      "centerline_offset_half_widths": -1,
+      "diagram_label": "23 FEET 9 INCHES (OUTSIDE)"
+    },
+    "free_throw_circle_radius": {
+      "value": 6.0,
+      "unit": "feet",
+      "reference": "outside_edge",
+      "centerline_offset_half_widths": -1,
+      "diagram_label": "6 FEET RADIUS (OUTSIDE)"
+    },
+    "center_circle_radius": {
+      "value": 6.0,
+      "unit": "feet",
+      "reference": "outside_edge",
+      "centerline_offset_half_widths": -1,
+      "diagram_label": "6 FEET RADIUS (OUTSIDE)"
+    },
+    "restricted_area_radius": {
+      "value": 4.0,
+      "unit": "feet",
+      "reference": "inside_edge",
+      "centerline_offset_half_widths": 1,
+      "diagram_label": "4 FEET (INSIDE) restricted-area radius"
+    }
   }
 }

@@ -41,11 +41,6 @@ from .polyline import nearest_on_polyline
 
 SYNTHETIC_SCHEMA_VERSION = "benchmark-synthetic-1.0.0"
 
-#: NBA court lines are two inches wide. The benchmark's whole line-convention
-#: decision -- centerline, not edge -- is only meaningful at this scale, so the
-#: renderer has to honour it rather than drawing hairlines.
-LINE_WIDTH_FT = 2.0 / 12.0
-
 DEFAULT_WIDTH, DEFAULT_HEIGHT = 1280, 720
 
 #: Gaussian blur applied after painting, matching the softness a broadcast frame
@@ -68,6 +63,7 @@ class SyntheticScene:
     truth: dict[MarkingFeature, np.ndarray]
     width: int
     height: int
+    line_width_ft: float
 
     def visible(self, margin_px: float = 2.0) -> frozenset[MarkingFeature]:
         """Features with a real run of paint inside the frame.
@@ -231,7 +227,6 @@ def render_scene(
         _draw_distractors(canvas, matrix, layout)
 
     truth: dict[MarkingFeature, np.ndarray] = {}
-    half_width = LINE_WIDTH_FT / 2.0
 
     for feature, polyline in sorted(marking_polylines(layout).items(), key=lambda kv: kv[0].value):
         court_points = polyline.points
@@ -243,7 +238,7 @@ def render_scene(
                 densified.append(start + steps[:, None] * (end - start))
             court_points = np.vstack(densified)
 
-        polygon = _stripe_polygon(court_points, matrix, half_width)
+        polygon = _stripe_polygon(court_points, matrix, polyline.width_ft / 2.0)
         centerline = project(matrix, court_points)
         if polygon is None or centerline is None or not np.all(np.isfinite(centerline)):
             continue
@@ -272,6 +267,7 @@ def render_scene(
         truth=truth,
         width=width,
         height=height,
+        line_width_ft=layout.line_width,
     )
 
 
@@ -297,7 +293,7 @@ def write_scene(scene: SyntheticScene, out_dir: Path | str) -> Path:
                 "scene_id": scene.scene_id,
                 "width": scene.width,
                 "height": scene.height,
-                "line_width_ft": LINE_WIDTH_FT,
+                "line_width_ft": scene.line_width_ft,
                 "h_court_to_image": scene.h_court_to_image.tolist(),
                 "centerlines": {
                     feature.value: points.tolist() for feature, points in scene.truth.items()

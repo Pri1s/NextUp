@@ -100,6 +100,17 @@ export. See [`docs/BENCHMARK.md`](docs/BENCHMARK.md) for the methodology decisio
 labeling contract, recorded baseline metrics, limitations, and reproduction
 commands.
 
+### Milestone 2 authoritative marking geometry
+
+Milestone 2 is complete. Strict layout v2 converts the official NBA diagram's
+inside/outside dimensions and 2-inch paint width into one set of analytic
+painted-centerline primitives. Calibration visualization, benchmark geometry,
+glossary/reference output, synthetic paint, and future hybrid fitting use that
+same layout and content hash. Generic hybrid evidence/decision records are
+defined, but extraction and fitting behavior intentionally begin in later
+milestones. See
+[`docs/COURT_CALIBRATION_HYBRID_MARKINGS_PLAN.md`](docs/COURT_CALIBRATION_HYBRID_MARKINGS_PLAN.md).
+
 ## Keypoint semantics
 
 [`dataset/schemas/court_keypoints.v3.json`](dataset/schemas/court_keypoints.v3.json)

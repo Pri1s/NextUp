@@ -120,7 +120,7 @@ class ParserTests(unittest.TestCase):
         ]
         self.assertEqual(
             sorted(actions[0].choices),
-            ["calibrate-frames", "inspect-model", "validate-layout"],
+            ["calibrate-frames", "inspect-model", "refine-shadow", "validate-layout"],
         )
 
     def test_calibrate_defaults_to_confident_evidence_only(self):
@@ -131,6 +131,21 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(cli.parse_tiers(args.tiers), ("confident",))
         self.assertEqual(args.evidence_map, "reloc2_18_provisional")
         self.assertEqual(args.layout, "nba_halfcourt")
+
+
+class ValidateLayoutOutputTests(unittest.TestCase):
+    def test_output_summarizes_schema_source_and_marking_convention(self):
+        args = cli.build_parser().parse_args(["validate-layout", "nba_halfcourt"])
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            status = cli.command_validate_layout(args)
+        rendered = output.getvalue()
+        self.assertEqual(status, 0)
+        self.assertIn("half-court-layout-2.0.0", rendered)
+        self.assertIn("painted_centerline", rendered)
+        self.assertIn("2.0 in", rendered)
+        self.assertIn("markings (14)", rendered)
+        self.assertIn("validation: OK", rendered)
 
 
 class ImageSourceTests(unittest.TestCase):

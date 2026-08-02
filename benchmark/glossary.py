@@ -26,12 +26,7 @@ from contracts.annotations import (
 )
 from contracts.court_layout import HalfCourtLayout
 
-from .geometry import (
-    RESTRICTED_AREA_RADIUS_FT,
-    THREE_POINT_RADIUS_FT,
-    depth_span,
-    marking_polylines,
-)
+from .geometry import depth_span, marking_polylines
 
 #: Bumped whenever wording changes in a way that could alter what an annotator
 #: produces. Recorded in every annotation file, because a prompt change silently
@@ -169,24 +164,28 @@ def _dimensions(feature: MarkingFeature, layout: HalfCourtLayout) -> str:
     span = f"{low:.1f}-{high:.1f} ft from the baseline"
 
     extra = {
-        MarkingFeature.THREE_POINT_ARC: f"radius {THREE_POINT_RADIUS_FT} ft about the basket",
+        MarkingFeature.THREE_POINT_ARC: (
+            f"centerline radius {layout.three_point_radius:.3f} ft about the basket"
+        ),
         MarkingFeature.RESTRICTED_AREA_ARC: (
-            f"radius {RESTRICTED_AREA_RADIUS_FT} ft about the basket"
+            f"centerline radius {layout.restricted_area_radius:.3f} ft about the basket"
         ),
         MarkingFeature.FREE_THROW_CIRCLE_FAR_HALF: (
-            f"radius {layout.free_throw_circle_radius} ft about the free-throw line midpoint"
+            f"centerline radius {layout.free_throw_circle_radius:.3f} ft "
+            "about the free-throw line midpoint"
         ),
         MarkingFeature.FREE_THROW_CIRCLE_NEAR_HALF: (
-            f"radius {layout.free_throw_circle_radius} ft about the free-throw line midpoint"
+            f"centerline radius {layout.free_throw_circle_radius:.3f} ft "
+            "about the free-throw line midpoint"
         ),
-        MarkingFeature.FREE_THROW_LINE: f"{layout.lane_width} ft long",
-        MarkingFeature.LANE_EDGE_FAR: f"lane is {layout.lane_width} ft wide",
-        MarkingFeature.LANE_EDGE_NEAR: f"lane is {layout.lane_width} ft wide",
+        MarkingFeature.FREE_THROW_LINE: f"{layout.lane_width:.3f} ft centerline length",
+        MarkingFeature.LANE_EDGE_FAR: f"lane centerlines are {layout.lane_width:.3f} ft apart",
+        MarkingFeature.LANE_EDGE_NEAR: f"lane centerlines are {layout.lane_width:.3f} ft apart",
         MarkingFeature.THREE_POINT_CORNER_FAR: (
-            f"{layout.three_point_corner_inset} ft in from the sideline"
+            f"centerline {layout.three_point_corner_inset:.3f} ft from sideline centerline"
         ),
         MarkingFeature.THREE_POINT_CORNER_NEAR: (
-            f"{layout.three_point_corner_inset} ft in from the sideline"
+            f"centerline {layout.three_point_corner_inset:.3f} ft from sideline centerline"
         ),
     }.get(feature)
 

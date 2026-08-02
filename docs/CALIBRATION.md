@@ -28,19 +28,40 @@ next increment and needs the quality gates below to validate against.
 End-agnostic half court, anchored on whichever end is in shot:
 
 ```text
-        far sideline  Y = 0
+        far sideline centerline  Y = 0
         +---------------------------------+
         |                                 |
-  X = 0 |  visible baseline               |  X = 47  midcourt
+  X = 0 |  visible baseline               |  X = 47 ft 1 in  midcourt
         |                                 |
         +---------------------------------+
-        near sideline Y = 50
+        near sideline centerline Y = 50 ft 2 in
 ```
 
 Both axes are determinate from the image; neither requires knowing north from
 south. Distances, lane positions and shot ranges are all correct here. An
 orientation owner can later map half court to full court by supplying end
 identity alone, with no geometry changing.
+
+### Authoritative v2 painted geometry
+
+Layout schema `half-court-layout-2.0.0` uses the painted stripe centerline for
+all marking coordinates and junctions. The NBA profile cites the Official
+2025–26 NBA Playing Rules, Rule No. 1 court diagram, retains every published
+inside/outside edge convention, and derives centerlines using the official
+2-inch stripe width. Examples are the 23 ft 8 in three-point centerline radius,
+3 ft 2 in corner centerline coordinate, 5 ft 11 in circle radii, and 4 ft 1 in
+restricted-area centerline radius.
+
+This is an intentional coordinate/hash break from v1, which used nominal
+rule-book edge values directly as if they were centerlines. Existing Milestone 1
+reports remain historical v1 results. A v1 transform must not be applied to v2
+markings; benchmark scoring enforces matching `layout_hash` provenance. New
+keypoint and later hybrid candidates are generated under v2, and hybrid fallback
+must return the exact v2 keypoint candidate.
+
+Analytic primitives and physical stripe widths live in `HalfCourtLayout`.
+`calibration/viz.py`, benchmark geometry/scoring, the annotation reference court,
+glossary, synthetic truth, and future fitting all consume that one source.
 
 ## Evidence pooling
 
@@ -64,6 +85,21 @@ python -m calibration.cli calibrate-frames --weights models/court_keypoint_detec
 ```bash
 python -m calibration.cli validate-layout nba_halfcourt
 ```
+
+## Hybrid shadow refinement
+
+Milestone 4 consumes serialized `marking_shadow/` records offline and writes
+candidate transforms and diagnostics only under `hybrid_shadow/`:
+
+```bash
+python -m calibration.cli refine-shadow \
+  --shadow-run <run>/marking_shadow \
+  --calibrations <run>/calibrations.jsonl \
+  --layout nba_halfcourt --out <run>/hybrid_shadow
+```
+
+The keypoint and hybrid candidates are recorded side by side, but M4 always
+keeps the keypoint baseline. Refinement never mutates `calibrations.jsonl`.
 
 Outputs land in `engine_out/calibration/<clip>/<run_id>/`: `calibrations.jsonl`
 (one attempt per frame with evidence and drop reasons), `run.json` (layout,

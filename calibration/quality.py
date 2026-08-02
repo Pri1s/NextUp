@@ -356,6 +356,20 @@ def _plausibility_failures(
     return failures
 
 
+def plausibility_failures(
+    h_court_to_image: Matrix3x3,
+    h_image_to_court: Matrix3x3,
+    layout: HalfCourtLayout,
+    image_size: tuple[int, int],
+    scale_ft_per_px: float | None,
+    policy: CalibrationPolicy,
+) -> list[str]:
+    """Public read-only wrapper for the baseline physical plausibility gates."""
+    return _plausibility_failures(
+        h_court_to_image, h_image_to_court, layout, image_size, scale_ft_per_px, policy
+    )
+
+
 def _is_convex(quad: np.ndarray) -> bool:
     signs = []
     for i in range(4):

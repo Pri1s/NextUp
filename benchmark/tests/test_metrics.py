@@ -12,7 +12,10 @@ answer the question the milestone exists to ask, however plausible its numbers
 look.
 """
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -30,6 +33,8 @@ from benchmark.geometry import marking_polylines
 from benchmark.polyline import resample
 from benchmark.metrics import (
     compare_summaries,
+    load_calibration_transforms,
+    score_calibration_entry,
     score_frame,
     summarize_scores,
 )
@@ -232,6 +237,49 @@ class SummaryTests(unittest.TestCase):
         better = summarize_scores([score_frame(annotation, TRUTH, INVERSE, LAYOUT)])
         delta = compare_summaries(worse, better)
         self.assertLess(delta["bands"]["30-47ft"]["median_px_change_pct"], -25.0)
+
+
+class LayoutProvenanceTests(unittest.TestCase):
+    def setUp(self):
+        self.annotation = annotation_tracing(TRUTH, DEPTH_SPANNING)
+        self.entry = {
+            "status": "OK",
+            "layout_id": LAYOUT.layout_id,
+            "layout_hash": LAYOUT.content_hash(),
+            "h_court_to_image": TRUTH,
+            "h_image_to_court": INVERSE,
+        }
+
+    def test_matching_stored_layout_scores(self):
+        score = score_calibration_entry(self.annotation, self.entry, LAYOUT)
+        self.assertTrue(score.scored)
+
+    def test_mismatched_or_missing_hash_is_rejected(self):
+        for changed in (
+            {**self.entry, "layout_hash": "v1-hash"},
+            {**self.entry, "layout_hash": None},
+            {**self.entry, "layout_id": "other"},
+        ):
+            with self.subTest(entry=changed):
+                with self.assertRaises(ValueError):
+                    score_calibration_entry(self.annotation, changed, LAYOUT)
+
+    def test_loader_preserves_layout_identity_from_calibration_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "video" / "run" / "calibrations.jsonl"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({
+                "calibration": {
+                    "frame_index": 0, "status": "OK", "layout_id": LAYOUT.layout_id,
+                    "h_court_to_image": TRUTH.tolist(),
+                    "h_image_to_court": INVERSE.tolist(),
+                    "provenance": {"layout_hash": LAYOUT.content_hash()},
+                }
+            }) + "\n")
+            loaded = load_calibration_transforms(path)
+        entry = next(iter(loaded.values()))
+        self.assertEqual(entry["layout_id"], LAYOUT.layout_id)
+        self.assertEqual(entry["layout_hash"], LAYOUT.content_hash())
 
 
 if __name__ == "__main__":

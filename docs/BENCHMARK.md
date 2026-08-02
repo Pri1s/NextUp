@@ -17,6 +17,17 @@ Six selected frames and one labeler do not support production accuracy,
 reliability, or promotion claims. Those require a larger, independently audited
 gold set.
 
+## Geometry-version note
+
+Milestone 1 reports are immutable historical artifacts produced with layout v1.
+Milestone 2 corrected published NBA inside/outside edge dimensions to painted
+centerlines under `half-court-layout-2.0.0`, so the layout coordinates and content
+hash intentionally changed. Do not silently rescore a stored v1 transform against
+v2 markings: the benchmark scoring path now requires matching `layout_id` and
+`layout_hash`. Generate future model-only and hybrid baselines together under v2;
+the human pixel annotations remain valid because they already describe visual
+painted centerlines.
+
 ## Completion record
 
 The machine-readable closeout is

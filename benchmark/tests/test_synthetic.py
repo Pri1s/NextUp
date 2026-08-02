@@ -32,7 +32,6 @@ from contracts.court_layout import load_registered_layout
 
 from benchmark.polyline import nearest_on_polyline
 from benchmark.synthetic import (
-    LINE_WIDTH_FT,
     broadcast_homography,
     load_truth,
     render_scene,
@@ -131,8 +130,10 @@ class SceneTests(unittest.TestCase):
         matrix = self.scene.h_court_to_image
         from calibration.estimator import project
 
-        near = project(matrix, np.array([[0.5, 17.0], [0.5, 17.0 + LINE_WIDTH_FT]]))
-        far = project(matrix, np.array([[18.5, 17.0], [18.5, 17.0 + LINE_WIDTH_FT]]))
+        lane_y = self.layout.marking(MarkingFeature.LANE_EDGE_FAR).start[1]
+        width_ft = self.layout.marking(MarkingFeature.LANE_EDGE_FAR).width_ft
+        near = project(matrix, np.array([[0.5, lane_y], [0.5, lane_y + width_ft]]))
+        far = project(matrix, np.array([[18.5, lane_y], [18.5, lane_y + width_ft]]))
         near_width = float(np.linalg.norm(near[1] - near[0]))
         far_width = float(np.linalg.norm(far[1] - far[0]))
         self.assertGreater(near_width, far_width)

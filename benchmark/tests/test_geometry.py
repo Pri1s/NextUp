@@ -20,7 +20,6 @@ from contracts.court_layout import build_layout, load_registered_layout
 
 from benchmark.geometry import (
     DEPTH_BANDS,
-    THREE_POINT_RADIUS_FT,
     depth_band,
     depth_span,
     marking_polylines,
@@ -47,10 +46,10 @@ class GeometryTests(unittest.TestCase):
         self.assertGreater(high, 19.0)
         self.assertAlmostEqual(high, 29.0, places=2)
 
-    def test_free_throw_circle_far_half_reaches_25_feet(self):
-        """§4.3: the held-out family has to sit outside the fitted evidence."""
+    def test_free_throw_circle_far_half_uses_centerline_radius(self):
+        """The published six-foot outside radius becomes a 5 ft 11 in centerline."""
         _, high = depth_span(self.polylines[MarkingFeature.FREE_THROW_CIRCLE_FAR_HALF])
-        self.assertAlmostEqual(high, 25.0, places=2)
+        self.assertAlmostEqual(high, 24 + 11 / 12, places=6)
 
     def test_held_out_families_are_all_curved(self):
         """Held-out evidence must be independent of the straight lane geometry."""
@@ -63,7 +62,7 @@ class GeometryTests(unittest.TestCase):
         )
         arc = self.polylines[MarkingFeature.THREE_POINT_ARC].points
         radii = np.linalg.norm(arc - basket, axis=1)
-        self.assertTrue(np.allclose(radii, THREE_POINT_RADIUS_FT, atol=1e-9))
+        self.assertTrue(np.allclose(radii, self.layout.three_point_radius, atol=1e-9))
 
     def test_corner_segments_meet_the_arc(self):
         """The corner straight ends exactly where the curve begins."""
@@ -91,36 +90,19 @@ class GeometryTests(unittest.TestCase):
             basket_from_baseline=5.25,
             three_point_corner_inset=3.0,
             free_throw_circle_radius=6.0,
+            three_point_radius=23.75,
+            center_circle_radius=6.0,
+            restricted_area_radius=4.0,
+            line_width=2.0 / 12.0,
         )
         edge = marking_polylines(narrow)[MarkingFeature.LANE_EDGE_FAR].points
         self.assertTrue(np.allclose(edge[:, 1], 19.0))
 
-    def test_consistency_check_catches_a_real_divergence(self):
-        """A guard that cannot fail is not a guard.
-
-        Make the engine's rendering geometry disagree with the benchmark's and the
-        cross-check must say so. Without this, the check could be silently passing
-        because it compares nothing.
-        """
-        import benchmark.geometry as module
-
-        real = module._engine_markings
-
-        def drifted(layout, **kwargs):
-            markings = dict(real(layout, **kwargs))
-            markings["lane"] = [(x + 5.0, y) for x, y in markings["lane"]]
-            return markings
-
-        module._engine_markings = drifted
-        try:
-            problems = validate_geometry(self.layout)
-        finally:
-            module._engine_markings = real
-
-        self.assertTrue(
-            any("calibration.viz" in p for p in problems),
-            f"divergent lane geometry went unreported: {problems}",
-        )
+    def test_adapter_points_and_width_come_directly_from_layout(self):
+        for feature, polyline in self.polylines.items():
+            self.assertTrue(np.allclose(polyline.points, self.layout.sample_marking(feature)))
+            self.assertEqual(polyline.width_ft, self.layout.marking(feature).width_ft)
+            self.assertEqual(polyline.closed, self.layout.marking(feature).closed)
 
 
 class DepthBandTests(unittest.TestCase):

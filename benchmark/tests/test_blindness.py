@@ -31,10 +31,18 @@ PROMPT_DIR = BENCHMARK_DIR / "prompts"
 #: Model-free engine modules the benchmark may share. Reusing these is better than
 #: reimplementing them: two homography solvers that disagree would be a defect the
 #: benchmark could not distinguish from a calibration error.
+#:
+#: ``calibration.polyline`` was added for Milestone 4 by the same argument. It is
+#: pure numpy point-to-polyline geometry that both the hybrid refiner and the
+#: scorer need; it holds no layout, no detector, and no model, so it cannot carry
+#: a prediction across the wall. It lives under ``calibration/`` rather than here
+#: because the refiner needs it at runtime and the dependency may only point one
+#: way.
 ALLOWED_CALIBRATION_MODULES = frozenset(
     {
         "calibration.estimator",
         "calibration.io.video",
+        "calibration.polyline",
         "calibration.viz",
     }
 )
@@ -199,6 +207,39 @@ class AgentDefinitionTests(unittest.TestCase):
         """A forced guess from the tie-breaker is weighted more than an ordinary one."""
         text = (PROMPT_DIR / "court-adjudicator.md").read_text(encoding="utf-8").lower()
         self.assertIn("ambiguous_identity", text)
+
+
+class DepthBandAgreementTests(unittest.TestCase):
+    """The engine's copy of the depth bands must not drift from the benchmark's.
+
+    ``calibration.hybrid`` reports per-band transform displacement and cannot
+    import ``benchmark`` to get the band definition -- the whole point of keeping
+    scoring outside the engine is that runtime code cannot see the modules that
+    grade it. So the definition is duplicated, and this test is the thing that
+    stops the duplicate diverging. It lives here because only the benchmark side
+    is allowed to look in both directions.
+    """
+
+    def test_band_definitions_are_identical(self):
+        from calibration.hybrid.control_points import DEFAULT_DEPTH_BANDS
+
+        from benchmark.geometry import DEPTH_BANDS
+
+        self.assertEqual(DEFAULT_DEPTH_BANDS, DEPTH_BANDS)
+
+    def test_band_assignment_agrees_including_the_clamped_edges(self):
+        """The half-court runs to 47.083 ft while the last band stops at 47."""
+        import numpy as np
+
+        from calibration.hybrid.control_points import DEFAULT_DEPTH_BANDS, band_indices
+
+        from benchmark.geometry import depth_band
+
+        depths = np.array([-5.0, 0.0, 18.999, 19.0, 29.5, 30.0, 46.9, 47.0, 47.0833, 100.0])
+        index = band_indices(depths, DEFAULT_DEPTH_BANDS)
+        for value, position in zip(depths, index):
+            with self.subTest(depth=float(value)):
+                self.assertEqual(DEFAULT_DEPTH_BANDS[position][0], depth_band(float(value)))
 
 
 if __name__ == "__main__":
