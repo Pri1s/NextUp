@@ -53,7 +53,10 @@ def _source_scores(records, references, layout, source, frame_ids, include_held_
         transform = next((item for item in record.transforms if item.source.value == source), None)
         if transform is None:
             continue
-        entry = transform.as_dict()
+        # The frame's disposition lives on the record, not on the transform, so
+        # carry it across. Without it every scored frame reports "UNKNOWN" and
+        # the summary's status counts say nothing a reader can use.
+        entry = dict(transform.as_dict(), status=record.status.value)
         scores.append(score_calibration_entry(annotation, entry, layout, include_held_out=include_held_out))
     return scores
 

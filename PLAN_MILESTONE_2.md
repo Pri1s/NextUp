@@ -45,6 +45,14 @@ Create a separate `contracts/hybrid_types.py` so algorithm records do not clutte
 - `UnlabeledMarkingEvidence`: evidence/frame/source IDs, ordered samples, and only a geometric kind hint (`straight`, `curved`, or `unknown`)—never a court identity or model slot.
 - `MarkingAssignment`: evidence ID, accepted/rejected/ambiguous status, selected feature when unique, scored alternatives and association diagnostics (distance, tangent, coverage, margin), plus reason codes.
 - `PrimitiveQuality`/`GateResult` and `CandidateQuality`: candidate/source IDs, model-point and per-feature/family residual summaries, supported depth/families, held-out metrics, leave-one-primitive stability, gate outcomes, and reasons. The transform itself remains in `CourtCalibration` rather than being duplicated.
+
+  > **Amended by Milestone 4.** This holds for a transform a consumer may *use*, and
+  > `CandidateQuality` is still matrix-free exactly as designed here. But
+  > `CourtCalibration` enforces "usable status implies both transforms present", so a
+  > *rejected* challenger cannot be expressed as one at all — and shadow-mode audit exists
+  > precisely to keep those. M4 therefore adds `CandidateTransform`, an audit record for a
+  > transform that has not been promoted, joined to its `CandidateQuality` by `candidate_id`.
+  > `CourtCalibration` remains the sole home of a usable transform.
 - `SelectionDecision`: frame ID, baseline/challenger/selected candidate IDs, explicit keep-baseline/select-challenger/no-usable outcome, gate results, and reasons.
 
 Non-promoted transforms belong in Milestone 4 `CandidateTransform` records; the

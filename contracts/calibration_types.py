@@ -310,6 +310,23 @@ class LandmarkEvidence:
             "tier": self.tier,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "LandmarkEvidence":
+        """Rebuild pooled evidence from a stored calibration record.
+
+        Needed because refinement runs *offline*, against the evidence a run
+        already wrote, so it can be swept across extraction configurations
+        without re-reading video or re-running the detector.
+        """
+        return cls(
+            landmark_id=str(data["landmark_id"]),
+            x=float(data["x"]),
+            y=float(data["y"]),
+            confidence=float(data["confidence"]),
+            source_slots=tuple(int(slot) for slot in data["source_slots"]),
+            tier=str(data.get("tier", "confident")),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class Correspondence:
