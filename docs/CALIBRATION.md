@@ -99,7 +99,31 @@ python -m calibration.cli refine-shadow \
 ```
 
 The keypoint and hybrid candidates are recorded side by side, but M4 always
-keeps the keypoint baseline. Refinement never mutates `calibrations.jsonl`.
+keeps the keypoint baseline. Refinement never mutates `calibrations.jsonl` —
+that is asserted as a byte comparison in `calibration/tests/test_hybrid_cli.py`,
+because a refiner that quietly perturbed the baseline would corrupt the run the
+whole evaluation rests on.
+
+`refine-shadow` reads serialized records only: no video, no checkpoint, no GPU.
+That is what makes it cheap to re-run the refiner across extraction
+configurations, and the offline path is asserted to reproduce the inline
+`--hybrid-shadow` path byte for byte.
+
+Refiner behaviour is fixed by `HybridRefinerConfig`, whose `content_hash()`
+enters every record. Three defaults are worth knowing, because each was set
+against a measurement rather than chosen:
+
+| knob | value | why |
+| --- | --- | --- |
+| `max_control_shift_ft` | 1.5 | the question M4 asks is whether markings can *refine* a nearly-right transform, not correct a badly-extrapolated one |
+| `prior_weight` | 0.001 | a tie-breaker for directions the data does not constrain. It measures corner offsets in court feet, so a larger value pulls the fit toward the seed: at 0.25 planted recovery sat 5.97 px from a transform it had exact evidence for |
+| `max_outer` | 12 | ICP needs room to re-seat foot points after a large seed correction, and its progress is not monotonic per iteration, so the loop must not stop on one quiet round |
+
+**Scope.** Milestone 4 is shadow mode. It computes 21 gates and records whether
+a challenger *would* be eligible, but it never promotes one — `SELECT_CHALLENGER`
+appears nowhere in `calibration/hybrid/`, and a test enforces that. Whether the
+hybrid candidate is ever used is Milestone 5's decision, gated on evidence M4
+has not yet gathered.
 
 Outputs land in `engine_out/calibration/<clip>/<run_id>/`: `calibrations.jsonl`
 (one attempt per frame with evidence and drop reasons), `run.json` (layout,
@@ -183,6 +207,20 @@ python -m unittest discover -s calibration/tests -p "test_*.py" -t .
 python -m unittest discover -s contracts/tests -p "test_*.py" -t .
 ```
 
-256 tests. The load-bearing ones: a planted-homography round trip that must
-recover a known transform, degeneracy and scrambled-correspondence refusals, the
-pooling arithmetic, and a guard that no adapter map may claim verified status.
+The load-bearing ones: a planted-homography round trip that must recover a known
+transform, degeneracy and scrambled-correspondence refusals, the pooling
+arithmetic, and a guard that no adapter map may claim verified status.
+
+For the hybrid refiner, the two that matter most are **sliding invariance** and
+**density invariance** (`calibration/tests/test_hybrid_residuals.py`). A sample
+of paint says only "the line passes this far from me" — it says nothing about
+where *along* the line it sits, and it does not become more informative because
+the detector placed more samples nearby. Those two tests are those claims made
+executable, and they are what would catch a fragment's endpoints leaking into
+the fit.
+
+Run the whole suite from the repository root:
+
+```bash
+python -m unittest discover -s . -p 'test*.py'
+```

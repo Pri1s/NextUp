@@ -572,8 +572,20 @@ reports.
 
 ### Milestone 4 — Hybrid refinement in shadow mode
 
-**IMPLEMENTED in code; numeric evaluation remains gated on the separate P0/P1
-run.**
+**IMPLEMENTED and tested in shadow mode; NOT evaluated.** The numeric evaluation
+remains gated on the separate P0/P1 run, and until that runs nothing here is
+evidence that hybrid refinement helps on real footage.
+
+The engine recovers a planted transform to 0.02 px, is invariant to sliding
+samples along a line and to sample density, is byte-for-byte deterministic,
+never selects a challenger, and leaves `calibrations.jsonl` untouched. Every one
+of those numbers comes from planted or synthetic evidence. Whether the
+three-point arc — the only fitted primitive reaching past 19 feet, and therefore
+the source of the entire benefit — can actually be extracted from broadcast
+footage is unknown, as is whether the held-out free-throw circle appears often
+enough to provide an independent check. If it does not, this milestone has no
+falsifiable verdict available, and that must be settled before the comparison is
+run rather than after. See `PLAN_MILESTONE_4.md` §10b–10c.
 
 Add bounded, primitive-balanced joint refinement. Store:
 

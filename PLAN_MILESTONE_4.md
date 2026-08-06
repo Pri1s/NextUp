@@ -1,9 +1,11 @@
 # Milestone 4 — Hybrid Refinement in Shadow Mode — Implementation Plan
 
-**Status:** Implemented in shadow mode through steps 5–10; P0/P1 not run
+**Status:** Implemented and tested in shadow mode through steps 5–10. **Not evaluated** —
+P0/P1 have not run, so nothing here is yet evidence that hybrid refinement helps on real
+footage. See "Corrections during implementation" and "What is and is not established".
 **Depends on:** M2 (complete), M3 (implemented, never run, not yet gated)
-**Test baseline at planning time:** 553 passing, 3 skipped
-(`.venv/bin/python -m unittest discover -s . -p 'test*.py'`)
+**Tests:** planning baseline 508 → 553 after the parameterization → **647 passing, 8 skipped**
+at close-out (`.venv/bin/python -m unittest discover -s . -p 'test*.py'`)
 
 ## Context
 
@@ -646,7 +648,7 @@ Results namespace **`benchmark/results/nba_m4_v1/`** with a README mirroring
 - [ ] **P1 — the M3 shadow run and its numeric gate.** `--marking-shadow`, then `benchmark.cli score-extraction`, then the out-of-fold variant freeze from `predefined_variants()`. **If M3 fails its precision gates, M4 is killed.** M4 must never rescue a weak extractor — a refiner fitting mis-associated paint is exactly the confident-but-wrong failure the whole plan exists to prevent.
 - [ ] **P2 — freeze exactly one extraction variant.** `refiner_config_hash` is meaningless if the evidence beneath it drifts. Every M4 record carries `shadow_config_hash`; the report must show one value.
 - [ ] **Run M4 diagnostics over all 534 frames**, then the §9 comparison over the six annotated frames. Evaluate the kill condition below. Record the result and its limitations; **do not weaken a threshold to obtain a pass.**
-- [ ] **Document and close.** Only after the done condition holds: the benchmark compares candidates and no existing consumer changed. Do not implement selection.
+- [x] **Document and close (code).** Done condition holds: `benchmark.cli score-hybrid` compares both candidates from serialized records alone, and `calibrations.jsonl` is byte-identical with and without the hybrid path. 647 passing / 8 skipped. Selection is not implemented. Corrections recorded in §10b; the limits of what this establishes in §10c. **The milestone is not complete** — it is implemented and unevaluated, and closing it needs the P0/P1 result above.
 
 Steps 2–10 proceed **in parallel with P0/P1** on synthetic data — roughly 90% of the code
 is testable against `broadcast_homography`, `PLANTED`, and hand-built
@@ -679,6 +681,79 @@ result arrives, not after.
 Criterion **(b)** is the honest core. Held-out error is the only M4 measurement independent
 of what was fitted, and unlike the §9 pixel thresholds it needs **no human reference** — so
 it can be evaluated over all 534 frames rather than 5. It is the number to look at first.
+
+## 10b. Corrections during implementation
+
+Recorded here rather than quietly patched, in the style of the probe-set correction in §4.
+
+### Defects found and fixed
+
+The refiner, as first written, **did not recover a planted transform**: given exact,
+zero-noise evidence and a seed displaced 8.49 px, it stopped 5.97 px away and reported
+`converged=True`. Confidently wrong is the failure mode this milestone exists to prevent, so
+it is worth naming what caused it.
+
+| # | defect | effect | how it is now caught |
+| --- | --- | --- | --- |
+| 1 | **LM damping inherited across outer iterations.** `mu` was initialised once outside the loop. Re-freezing the feet defines a new objective, so inherited damping describes a function that no longer exists; one hard iteration inflated `mu`, after which no descent step existed, the solve exited as a stall, and reported where it stood | arc-only stuck at 1.80 px, and a sliding-invariance blowup to 1.8 px at one sample offset | `test_arc_alone_recovers` (reinstating it fails 2 tests) |
+| 2 | **Prior weight 0.25 was a pull toward the seed, not a tie-breaker.** It measures corner offsets in court feet; at ~7 px/ft it outweighed a zero-residual data fit. Now `0.001` — bias is linear in the weight once the outer loop was fixed (0.01→0.178 px, 0.003→0.057, 0.001→0.021) | ~6 px of the total error | `PlantedRecoveryTests` (reinstating 0.25 fails 10 tests) |
+| 3 | **The outer loop stopped on "barely moved this round".** ICP progress is not monotonic per iteration, so that rule was chaotic: prior 0.001 stopped at 1.70 px while 0.0003 reached 0.008 px, decided purely by which side of the threshold one iteration landed on. The movement check is now a fixed-point test evaluated at exit, never an early break | non-monotonic, irreproducible results | `test_recovers_across_seed_distance` |
+| 4 | **`converged` conflated arriving with being stopped.** A stalled solve reported success, which would have let `hybrid.converged` pass on a transform the optimizer abandoned | a gate that could not fail | `ConvergenceHonestyTests` |
+| 5 | **`refine-shadow` had never worked.** It crashed on `LandmarkEvidence.from_dict`, which did not exist. This is the offline path that lets the refiner be swept across M3's variants without re-reading video | the sweep would have been blocked on first use | `test_refine_shadow_reproduces_the_inline_records_exactly` |
+| 6 | **Scored frames reported `UNKNOWN` status.** `CandidateTransform` carries no status while the disposition lives on the record, so `score_calibration_entry` fell back to its default and the summary's status counts told a reader nothing | misleading report, not a crash | `test_the_summary_reports_real_dispositions_not_unknown` |
+
+**Result: 5.97 px → 0.0207 px** at default config, against the 0.05 px bar.
+
+### Two things reported as defects that were not
+
+Recorded because the record should not overstate what was wrong.
+
+- **The marking tangent** was changed from a secant (interpolated foot → next vertex) to the
+  full template-segment direction. This is defensible on principle — a partial chord is not
+  the polyline's tangent, and it removes a `1e-12` guard that could silently zero a sample's
+  constraint — but it is **not behaviourally load-bearing**: reverting it changes recovery by
+  < 1e-5 px, and no honest test distinguishes the two. Any two distinct points on a straight
+  segment give the same unit vector, so even a 1e-4 baseline stays accurate in float64. The
+  original claim that this fixed the arc was wrong; that was defect 1, measured with
+  `max_outer=40`, which was silently working around it.
+- **Recorded residuals were already fresh.** `diagnostics._fresh_feature_measurements`
+  re-projected the template and re-ran the foot search correctly all along. The "fix" landed
+  on `raw_perpendicular_error_px`, which nothing called. That function has since been deleted:
+  it and the private helper were two implementations of one quantity, and *not* equivalent
+  (clamped point-to-polyline vs perpendicular-to-segment, which diverge at a clamped
+  endpoint). There is now one public `residuals.measure_feature_residuals`.
+
+### Test-design corrections
+
+- **Gate coverage was name-matched**, which gave false confidence in both directions. It is
+  now an explicit `THRESHOLD_GATES` map plus a reverse check that no gate exists without a
+  threshold behind it, so adding a threshold forces you to declare its gate.
+- **The CLI isolation tests were vacuous on first writing.** With blank frames the extractor
+  finds nothing, the refiner abstains, and both byte-comparisons passed while comparing empty
+  records. The fixture now paints the projected court, so the compared records contain a real
+  fit; `test_the_refiner_actually_produced_a_challenger` stops it regressing.
+- **The arc's residual floor is discretisation, not error** — the arc template is a polyline,
+  so a point on the true circle sits a sagitta outside its chord. Confirmed as the textbook
+  1/n²: 201 samples → 4.26e-3 px, 401 → 1.07e-3 px (exactly 4.00×). Pinned by
+  `test_arc_chord_error_falls_with_template_resolution` so that if the floor ever stops being
+  1/n² it gets re-diagnosed rather than given a wider threshold.
+
+## 10c. What is and is not established
+
+**Established.** The machinery is correct and self-consistent: it recovers a planted transform
+to 0.0207 px, is invariant to sliding samples along a line (2.8e-4 px) and to sample density
+(7e-4 px), is byte-for-byte deterministic and order-independent, never selects a challenger,
+leaves `calibrations.jsonl` untouched, and reproduces itself through the offline path. The
+depth instrumentation works: keypoint 19.0 ft → hybrid 29.0 ft on planted arc evidence.
+
+**Not established.** Every one of those numbers comes from *planted, zero-noise* evidence, or
+from a synthetic frame with the court drawn on it. Nothing here says painted markings can be
+found in real broadcast footage, and the whole benefit rests on one marking — the three-point
+arc, the only fitted primitive reaching past 19 ft. Nor is it known whether the held-out
+free-throw circle appears often enough to serve as an independent check; if it does not, the
+milestone has no falsifiable verdict available and that must be resolved before, not after,
+the comparison is run. Both questions are answered by P1, need no human annotations, and can
+be read off M3's own records across all 534 frames.
 
 ## 11. Verification
 
